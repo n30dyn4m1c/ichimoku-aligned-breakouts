@@ -50,6 +50,7 @@ void OnDeinit(const int reason)
          IndicatorRelease(ich[s][t]);
 }
 
+// 1 bull, -1 bear, 0 none
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int handle)
 {
    MqlRates rt[];
@@ -85,6 +86,7 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int handle)
 
 void OnTick()
 {
+   // drive on new M1 bar
    MqlRates m1[];
    if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
    ArraySetAsSeries(m1,true);
@@ -93,22 +95,43 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
-      int firstState=0;
+      // set 1: all 6 TFs (includes H4)
+      int stateAll=0;
       for(int t=0; t<TF_COUNT; t++)
       {
          int st = CheckTF(syms[s],TFs[t],ich[s][t]);
-         if(st==0){ firstState=0; break; }
-         if(t==0) firstState=st;
-         else if(st!=firstState){ firstState=0; break; }
+         if(st==0){ stateAll=0; break; }
+         if(t==0) stateAll=st;
+         else if(st!=stateAll){ stateAll=0; break; }
       }
-      if(firstState==1)
+      if(stateAll==1)
       {
-         string msg="Ichimoku ALIGN BULLISH on all TFs: "+syms[s];
+         string msg="Ichimoku ALIGN BULLISH (M1..H4): "+syms[s];
          Alert(msg); Print(msg);
       }
-      else if(firstState==-1)
+      else if(stateAll==-1)
       {
-         string msg="Ichimoku ALIGN BEARISH on all TFs: "+syms[s];
+         string msg="Ichimoku ALIGN BEARISH (M1..H4): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+
+      // set 2: intraday only (M1,M5,M15,M30,H1) -> t=0..4
+      int stateIntra=0;
+      for(int t=0; t<5; t++)
+      {
+         int st = CheckTF(syms[s],TFs[t],ich[s][t]);
+         if(st==0){ stateIntra=0; break; }
+         if(t==0) stateIntra=st;
+         else if(st!=stateIntra){ stateIntra=0; break; }
+      }
+      if(stateIntra==1)
+      {
+         string msg="Ichimoku INTRADAY BULLISH (M1..H1): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+      else if(stateIntra==-1)
+      {
+         string msg="Ichimoku INTRADAY BEARISH (M1..H1): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
