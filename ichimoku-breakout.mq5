@@ -6,7 +6,7 @@ input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
 
-#define MAX_SYMS 50
+#define MAX_SYMS 60
 #define TF_COUNT 6
 ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_M1,PERIOD_M5,PERIOD_M15,PERIOD_M30,PERIOD_H1,PERIOD_H4};
 int    ich[MAX_SYMS][TF_COUNT];
@@ -86,7 +86,6 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int handle)
 
 void OnTick()
 {
-   // drive on new M1 bar
    MqlRates m1[];
    if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
    ArraySetAsSeries(m1,true);
@@ -95,43 +94,45 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
-      // set 1: all 6 TFs (includes H4)
-      int stateAll=0;
+      int stateFull=0, statePartial=0;
+
+      // FULL (M1–H4)
       for(int t=0; t<TF_COUNT; t++)
       {
-         int st = CheckTF(syms[s],TFs[t],ich[s][t]);
-         if(st==0){ stateAll=0; break; }
-         if(t==0) stateAll=st;
-         else if(st!=stateAll){ stateAll=0; break; }
+         int st=CheckTF(syms[s],TFs[t],ich[s][t]);
+         if(st==0){ stateFull=0; break; }
+         if(t==0) stateFull=st;
+         else if(st!=stateFull){ stateFull=0; break; }
       }
-      if(stateAll==1)
+
+      // PARTIAL (M1–H1)
+      for(int t=0; t<5; t++)
       {
-         string msg="Ichimoku ALIGN BULLISH (M1..H4): "+syms[s];
+         int st=CheckTF(syms[s],TFs[t],ich[s][t]);
+         if(st==0){ statePartial=0; break; }
+         if(t==0) statePartial=st;
+         else if(st!=statePartial){ statePartial=0; break; }
+      }
+
+      if(stateFull==1)
+      {
+         string msg="FULL Bullish Alignment (H4→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
-      else if(stateAll==-1)
+      else if(stateFull==-1)
       {
-         string msg="Ichimoku ALIGN BEARISH (M1..H4): "+syms[s];
+         string msg="FULL Bearish Alignment (H4→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
 
-      // set 2: intraday only (M1,M5,M15,M30,H1) -> t=0..4
-      int stateIntra=0;
-      for(int t=0; t<5; t++)
+      if(statePartial==1)
       {
-         int st = CheckTF(syms[s],TFs[t],ich[s][t]);
-         if(st==0){ stateIntra=0; break; }
-         if(t==0) stateIntra=st;
-         else if(st!=stateIntra){ stateIntra=0; break; }
-      }
-      if(stateIntra==1)
-      {
-         string msg="Ichimoku INTRADAY BULLISH (M1..H1): "+syms[s];
+         string msg="PARTIAL Bullish Alignment (H1→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
-      else if(stateIntra==-1)
+      else if(statePartial==-1)
       {
-         string msg="Ichimoku INTRADAY BEARISH (M1..H1): "+syms[s];
+         string msg="PARTIAL Bearish Alignment (H1→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
