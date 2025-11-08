@@ -14,6 +14,7 @@ string syms[MAX_SYMS];
 int    symsCount=0;
 datetime lastM1bar=0;
 
+//------------------------------------------------------------
 int ParseSymbols(string list)
 {
    string parts[];
@@ -29,7 +30,7 @@ int ParseSymbols(string list)
    }
    return cnt;
 }
-
+//------------------------------------------------------------
 int OnInit()
 {
    symsCount = ParseSymbols(Symbols);
@@ -42,50 +43,72 @@ int OnInit()
       }
    return(INIT_SUCCEEDED);
 }
-
+//------------------------------------------------------------
 void OnDeinit(const int reason)
 {
    for(int s=0; s<symsCount; s++)
       for(int t=0; t<TF_COUNT; t++)
          IndicatorRelease(ich[s][t]);
 }
-
+//------------------------------------------------------------
 // 1 bull, -1 bear, 0 none
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int handle)
 {
    MqlRates rt[];
    if(CopyRates(sym,tf,0,90,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
-   int shift=1;
-   int priceCloudShift=shift+26;
-   int chikouShift=shift+26;
-   int chikouCloudShift=shift+52;
 
-   double senA[1],senB[1],senA_ch[1],senB_ch[1],chikou[1];
+   int shift=1;
+   int priceCloudShift = shift + 26; // cloud drawn 26 fwd
+   int chikouShift     = shift + 26; // chikou is 26 back
+   int chikouCloudShift= shift + 52; // your 52-back cloud check
+
+   // current tenkan/kijun
+   double ten[1], kij[1];
+   if(CopyBuffer(handle,0,shift,1,ten)<=0) return 0;
+   if(CopyBuffer(handle,1,shift,1,kij)<=0) return 0;
+
+   // current cloud (for price)
+   double senA[1], senB[1];
    if(CopyBuffer(handle,2,priceCloudShift,1,senA)<=0) return 0;
    if(CopyBuffer(handle,3,priceCloudShift,1,senB)<=0) return 0;
+
+   // chikou at its bar
+   double chikou[1];
    if(CopyBuffer(handle,4,chikouShift,1,chikou)<=0) return 0;
+
+   // tenkan/kijun at chikou bar (26 back)
+   double ten_ch[1], kij_ch[1];
+   if(CopyBuffer(handle,0,chikouShift,1,ten_ch)<=0) return 0;
+   if(CopyBuffer(handle,1,chikouShift,1,kij_ch)<=0) return 0;
+
+   // cloud at chikou bar (52 back)
+   double senA_ch[1], senB_ch[1];
    if(CopyBuffer(handle,2,chikouCloudShift,1,senA_ch)<=0) return 0;
    if(CopyBuffer(handle,3,chikouCloudShift,1,senB_ch)<=0) return 0;
 
-   double closePrice=rt[shift].close;
-   double cloudHigh=MathMax(senA[0],senB[0]);
-   double cloudLow =MathMin(senA[0],senB[0]);
-   double cloudHighCh=MathMax(senA_ch[0],senB_ch[0]);
-   double cloudLowCh =MathMin(senA_ch[0],senB_ch[0]);
+   double closePrice   = rt[shift].close;
+   double cloudHigh    = MathMax(senA[0],senB[0]);
+   double cloudLow     = MathMin(senA[0],senB[0]);
+   double cloudHighCh  = MathMax(senA_ch[0],senB_ch[0]);
+   double cloudLowCh   = MathMin(senA_ch[0],senB_ch[0]);
 
-   bool priceAbove=(closePrice>cloudHigh);
-   bool priceBelow=(closePrice<cloudLow);
-   bool chAbove=(chikou[0]>cloudHighCh);
-   bool chBelow=(chikou[0]<cloudLowCh);
+   // price-level conditions (current bar)
+   bool priceAbove = (closePrice>cloudHigh) && (closePrice>ten[0]) && (closePrice>kij[0]);
+   bool priceBelow = (closePrice<cloudLow)  && (closePrice<ten[0]) && (closePrice<kij[0]);
+
+   // chikou-level conditions (26 back ten/kij, 52 back cloud)
+   bool chAbove = (chikou[0]>cloudHighCh) && (chikou[0]>ten_ch[0]) && (chikou[0]>kij_ch[0]);
+   bool chBelow = (chikou[0]<cloudLowCh)  && (chikou[0]<ten_ch[0]) && (chikou[0]<kij_ch[0]);
 
    if(priceAbove && chAbove) return 1;
    if(priceBelow && chBelow) return -1;
    return 0;
 }
-
+//------------------------------------------------------------
 void OnTick()
 {
+   // drive by M1 close
    MqlRates m1[];
    if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
    ArraySetAsSeries(m1,true);
