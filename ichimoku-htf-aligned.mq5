@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,XAUUSD,XAGUSD,GOLD,SILVER,US30Cash,US500Cash,US100Cash,OILCash,BRENTCash,NGASCash";
+input string Symbols = "GOLD,SILVER,EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,XAUUSD,XAGUSD,US30Cash,US500Cash,US100Cash,OILCash,BRENTCash,NGASCash";
 input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
@@ -49,39 +49,42 @@ void OnDeinit(const int reason)
          IndicatorRelease(ich[s][t]);
 }
 
-// 1 bull, -1 bear, 0 none
-int CheckTF(string sym, ENUM_TIMEFRAMES tf, int handle)
+int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[];
-   if(CopyRates(sym,tf,0,90,rt)<=0) return 0;
+   MqlRates rt[]; if(CopyRates(sym,tf,0,90,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
-   int shift=1;
-   int priceCloudShift=shift+26;
-   int chikouShift=shift+26;
-   int chikouCloudShift=shift+52;
+   int sh=1, priceCloud=sh+26, chShift=sh+26, chCloud=sh+52;
 
-   double senA[1],senB[1],senA_ch[1],senB_ch[1],chikou[1];
-   if(CopyBuffer(handle,2,priceCloudShift,1,senA)<=0) return 0;
-   if(CopyBuffer(handle,3,priceCloudShift,1,senB)<=0) return 0;
-   if(CopyBuffer(handle,4,chikouShift,1,chikou)<=0) return 0;
-   if(CopyBuffer(handle,2,chikouCloudShift,1,senA_ch)<=0) return 0;
-   if(CopyBuffer(handle,3,chikouCloudShift,1,senB_ch)<=0) return 0;
+   double ten[1],kij[1],senA[1],senB[1],chik[1];
+   double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
 
-   double closePrice=rt[shift].close;
-   double cloudHigh =MathMax(senA[0],senB[0]);
-   double cloudLow  =MathMin(senA[0],senB[0]);
-   double cloudHighCh=MathMax(senA_ch[0],senB_ch[0]);
-   double cloudLowCh =MathMin(senA_ch[0],senB_ch[0]);
+   if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
+   if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
+   if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
+   if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
 
-   bool priceAbove=(closePrice>cloudHigh);
-   bool priceBelow=(closePrice<cloudLow);
-   bool chAbove=(chikou[0]>cloudHighCh);
-   bool chBelow=(chikou[0]<cloudLowCh);
+   if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
+   if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
+   if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
+   if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
+   if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
 
-   if(priceAbove && chAbove) return 1;
-   if(priceBelow && chBelow) return -1;
+   double closeP=rt[sh].close;
+   double cHi = MathMax(senA[0],senB[0]);
+   double cLo = MathMin(senA[0],senB[0]);
+   double cHiC= MathMax(senA_ch[0],senB_ch[0]);
+   double cLoC= MathMin(senA_ch[0],senB_ch[0]);
+
+   bool bull = (closeP>cHi && closeP>ten[0] && closeP>kij[0] &&
+                chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0]);
+   bool bear = (closeP<cLo && closeP<ten[0] && closeP<kij[0] &&
+                chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0]);
+
+   if(bull) return 1;
+   if(bear) return -1;
    return 0;
 }
+
 
 void OnTick()
 {
