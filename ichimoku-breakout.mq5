@@ -51,9 +51,10 @@ void OnDeinit(const int reason)
          IndicatorRelease(ich[s][t]);
 }
 //------------------------------------------------------------
+// 1 bull, -1 bear, 0 none
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[]; if(CopyRates(sym,tf,0,90,rt)<=0) return 0;
+   MqlRates rt[]; if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
    int sh=1, priceCloud=sh+26, chShift=sh+26, chCloud=sh+52;
 
@@ -86,10 +87,10 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(bear) return -1;
    return 0;
 }
-
 //------------------------------------------------------------
 void OnTick()
 {
+   // drive by M1 close
    MqlRates m1[];
    if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
    ArraySetAsSeries(m1,true);
@@ -98,24 +99,43 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
-      int state=0;
-      // check from highest to lowest: H4(H=5),H1(4),M30(3),M15(2),M5(1),M1(0)
+      // 1) FULL H4→M1
+      int stateFull=0;
       for(int t=TF_COUNT-1; t>=0; t--)
       {
          int st = CheckTF(syms[s], TFs[t], ich[s][t]);
-         if(st==0){ state=0; break; }         // one TF failed → stop for this symbol
-         if(t==TF_COUNT-1) state=st;          // first (highest) TF sets direction
-         else if(st!=state){ state=0; break;} // mismatch → stop
+         if(st==0){ stateFull=0; break; }
+         if(t==TF_COUNT-1) stateFull=st;
+         else if(st!=stateFull){ stateFull=0; break; }
       }
-
-      if(state==1)
+      if(stateFull==1)
       {
          string msg="Top-down Bullish (H4→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
-      else if(state==-1)
+      else if(stateFull==-1)
       {
          string msg="Top-down Bearish (H4→M1): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+
+      // 2) INTRADAY H1→M1 (indexes 4..0)
+      int stateH1=0;
+      for(int t=4; t>=0; t--)
+      {
+         int st = CheckTF(syms[s], TFs[t], ich[s][t]);
+         if(st==0){ stateH1=0; break; }
+         if(t==4) stateH1=st;
+         else if(st!=stateH1){ stateH1=0; break; }
+      }
+      if(stateH1==1)
+      {
+         string msg="Intraday Bullish (H1→M1): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+      else if(stateH1==-1)
+      {
+         string msg="Intraday Bearish (H1→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
