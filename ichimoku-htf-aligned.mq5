@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| HTF Ichimoku Alignment (with full chikou checks)                 |
+//| HTF Ichimoku Alignment (MN1→H4)                                  |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -9,12 +9,14 @@ input int    Kijun   = 26;
 input int    SenkouB = 52;
 
 #define MAX_SYMS 60
-#define TF_COUNT 5
-ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_H1,PERIOD_H4,PERIOD_D1,PERIOD_W1,PERIOD_MN1};
+#define TF_COUNT 4
+// highest → lowest
+ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_MN1,PERIOD_W1,PERIOD_D1,PERIOD_H4};
+
 int    ich[MAX_SYMS][TF_COUNT];
 string syms[MAX_SYMS];
 int    symsCount=0;
-datetime lastH1bar=0;
+datetime lastH4bar=0;
 
 //------------------------------------------------------------
 int ParseSymbols(string list)
@@ -55,14 +57,9 @@ void OnDeinit(const int reason)
 // 1 bull, -1 bear, 0 none
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[]; 
-   if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
+   MqlRates rt[]; if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
-
-   int sh=1;
-   int priceCloud = sh+26;
-   int chShift    = sh+26;
-   int chCloud    = sh+52;
+   int sh=1, priceCloud=sh+26, chShift=sh+26, chCloud=sh+52;
 
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
@@ -78,39 +75,30 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
    if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
 
-   double closeP   = rt[sh].close;
-   double price_26 = rt[chShift].close; // chikou vs price 26 back
+   double closeP=rt[sh].close;
+   double cHi = MathMax(senA[0],senB[0]);
+   double cLo = MathMin(senA[0],senB[0]);
+   double cHiC= MathMax(senA_ch[0],senB_ch[0]);
+   double cLoC= MathMin(senA_ch[0],senB_ch[0]);
 
-   double cHi  = MathMax(senA[0],senB[0]);
-   double cLo  = MathMin(senA[0],senB[0]);
-   double cHiC = MathMax(senA_ch[0],senB_ch[0]);
-   double cLoC = MathMin(senA_ch[0],senB_ch[0]);
+   bool bull = (closeP>cHi && closeP>ten[0] && closeP>kij[0] &&
+                chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0]);
+   bool bear = (closeP<cLo && closeP<ten[0] && closeP<kij[0] &&
+                chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0]);
 
-   bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
-   bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
-
-   bool chAbove = (chik[0]>cHiC &&
-                   chik[0]>ten_ch[0] &&
-                   chik[0]>kij_ch[0] &&
-                   chik[0]>price_26);
-
-   bool chBelow = (chik[0]<cLoC &&
-                   chik[0]<ten_ch[0] &&
-                   chik[0]<kij_ch[0] &&
-                   chik[0]<price_26);
-
-   if(priceAbove && chAbove) return 1;
-   if(priceBelow && chBelow) return -1;
+   if(bull) return 1;
+   if(bear) return -1;
    return 0;
 }
 //------------------------------------------------------------
 void OnTick()
 {
-   MqlRates h1[];
-   if(CopyRates(_Symbol,PERIOD_H1,0,5,h1)<=0) return;
-   ArraySetAsSeries(h1,true);
-   if(h1[1].time==lastH1bar) return;
-   lastH1bar=h1[1].time;
+   // fire on H4 close
+   MqlRates h4[];
+   if(CopyRates(_Symbol,PERIOD_H4,0,5,h4)<=0) return;
+   ArraySetAsSeries(h4,true);
+   if(h4[1].time==lastH4bar) return;
+   lastH4bar=h4[1].time;
 
    for(int s=0;s<symsCount;s++)
    {
@@ -125,12 +113,12 @@ void OnTick()
 
       if(state==1)
       {
-         string msg="HTF Bullish Alignment (MN1→H1): "+syms[s];
+         string msg="HTF Bullish Alignment (MN1→H4): "+syms[s];
          Alert(msg); Print(msg);
       }
       else if(state==-1)
       {
-         string msg="HTF Bearish Alignment (MN1→H1): "+syms[s];
+         string msg="HTF Bearish Alignment (MN1→H4): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
