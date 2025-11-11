@@ -1,13 +1,14 @@
 //+------------------------------------------------------------------+
 #property strict
 
-input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,XAUUSD,XAGUSD,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash,GOLD,SILVER";
+input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
 input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
 
 #define MAX_SYMS 60
 #define TF_COUNT 6
+// 0..5 = M1,M5,M15,M30,H1,H4
 ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_M1,PERIOD_M5,PERIOD_M15,PERIOD_M30,PERIOD_H1,PERIOD_H4};
 int    ich[MAX_SYMS][TF_COUNT];
 string syms[MAX_SYMS];
@@ -51,7 +52,7 @@ void OnDeinit(const int reason)
          IndicatorRelease(ich[s][t]);
 }
 //------------------------------------------------------------
-// 1 bull, -1 bear, 0 none
+// 1 bull, -1 bear, 0 none (with full price+chikou rules)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
    MqlRates rt[]; 
@@ -66,35 +67,27 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
 
-   // current tenkan/kijun
    if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
    if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
-
-   // cloud for price (26 back)
    if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
    if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
 
-   // chikou at 26 back
    if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
-   // tenkan/kijun at chikou bar
    if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
    if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
-   // cloud at chikou bar (52 back)
    if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
    if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
 
-   double closeP  = rt[sh].close;
-   double price_26= rt[chShift].close;    // price 26 back for chikou compare
+   double closeP   = rt[sh].close;
+   double price_26 = rt[chShift].close;
    double cHi  = MathMax(senA[0],senB[0]);
    double cLo  = MathMin(senA[0],senB[0]);
    double cHiC = MathMax(senA_ch[0],senB_ch[0]);
    double cLoC = MathMin(senA_ch[0],senB_ch[0]);
 
-   // price rules
    bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
    bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
 
-   // chikou rules: cloud52, tenkan26, kijun26, price26
    bool chAbove = (chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0] && chik[0]>price_26);
    bool chBelow = (chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0] && chik[0]<price_26);
 
@@ -114,7 +107,7 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
-      // 1) FULL H4→M1
+      // 1) FULL H4→M1 (indexes 5..0)
       int stateFull=0;
       for(int t=TF_COUNT-1; t>=0; t--)
       {
@@ -134,7 +127,7 @@ void OnTick()
          Alert(msg); Print(msg);
       }
 
-      // 2) INTRADAY H1→M1 (indexes 4..0)
+      // 2) H1→M1 (indexes 4..0)
       int stateH1=0;
       for(int t=4; t>=0; t--)
       {
@@ -151,6 +144,26 @@ void OnTick()
       else if(stateH1==-1)
       {
          string msg="H1 down Bearish (H1→M1): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+
+      // 3) M30→M1 (indexes 3..0)
+      int stateM30=0;
+      for(int t=3; t>=0; t--)
+      {
+         int st = CheckTF(syms[s], TFs[t], ich[s][t]);
+         if(st==0){ stateM30=0; break; }
+         if(t==3) stateM30=st;
+         else if(st!=stateM30){ stateM30=0; break; }
+      }
+      if(stateM30==1)
+      {
+         string msg="M30 down Bullish (M30→M1): "+syms[s];
+         Alert(msg); Print(msg);
+      }
+      else if(stateM30==-1)
+      {
+         string msg="M30 down Bearish (M30→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
