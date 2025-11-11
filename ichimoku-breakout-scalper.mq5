@@ -62,13 +62,13 @@ void OnDeinit(const int reason)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
    MqlRates rt[];
-   if(CopyRates(sym,tf,0,90,rt)<=0) return 0;
+   if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
 
    int sh=1;
-   int priceCloudShift = sh+26;  // to match cloud position
-   int chikouShift     = sh+26;  // chikou is 26 back
-   int chikouCloudShift= sh+52;  // your rule
+   int priceCloudShift = sh+26;   // cloud is drawn 26 fwd → compare 26 back
+   int chikouShift     = sh+26;   // chikou is 26 back
+   int chikouCloudShift= sh+52;   // your 52-back cloud rule
 
    // current tenkan/kijun
    double ten[1], kij[1];
@@ -80,7 +80,7 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(CopyBuffer(h,2,priceCloudShift,1,senA)<=0) return 0;
    if(CopyBuffer(h,3,priceCloudShift,1,senB)<=0) return 0;
 
-   // chikou at its bar (26 back)
+   // chikou at 26 back
    double chikou[1];
    if(CopyBuffer(h,4,chikouShift,1,chikou)<=0) return 0;
 
@@ -94,33 +94,29 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(CopyBuffer(h,2,chikouCloudShift,1,senA_ch)<=0) return 0;
    if(CopyBuffer(h,3,chikouCloudShift,1,senB_ch)<=0) return 0;
 
-   double closeP   = rt[sh].close;
-   double cloudHi  = MathMax(senA[0],senB[0]);
-   double cloudLo  = MathMin(senA[0],senB[0]);
-   double cloudHiC = MathMax(senA_ch[0],senB_ch[0]);
-   double cloudLoC = MathMin(senA_ch[0],senB_ch[0]);
+   double closeP    = rt[sh].close;
+   double price_26  = rt[chikouShift].close;          // price 26 back for chikou vs price
+   double cloudHi   = MathMax(senA[0],senB[0]);
+   double cloudLo   = MathMin(senA[0],senB[0]);
+   double cloudHiCh = MathMax(senA_ch[0],senB_ch[0]);
+   double cloudLoCh = MathMin(senA_ch[0],senB_ch[0]);
 
-   // bullish: price above current cloud, above current tenkan/kijun
-   // chikou above its cloud (52 back) and above its tenkan/kijun (26 back)
-   bool bull =
-      closeP>cloudHi &&
-      closeP>ten[0] &&
-      closeP>kij[0] &&
-      chikou[0]>cloudHiC &&
-      chikou[0]>ten_ch[0] &&
-      chikou[0]>kij_ch[0];
+   // price rules (current)
+   bool priceAbove = (closeP>cloudHi && closeP>ten[0] && closeP>kij[0]);
+   bool priceBelow = (closeP<cloudLo && closeP<ten[0] && closeP<kij[0]);
 
-   // bearish symmetric
-   bool bear =
-      closeP<cloudLo &&
-      closeP<ten[0] &&
-      closeP<kij[0] &&
-      chikou[0]<cloudLoC &&
-      chikou[0]<ten_ch[0] &&
-      chikou[0]<kij_ch[0];
+   // chikou rules (lagging)
+   bool chAbove = (chikou[0]>cloudHiCh &&
+                   chikou[0]>ten_ch[0] &&
+                   chikou[0]>kij_ch[0] &&
+                   chikou[0]>price_26);
+   bool chBelow = (chikou[0]<cloudLoCh &&
+                   chikou[0]<ten_ch[0] &&
+                   chikou[0]<kij_ch[0] &&
+                   chikou[0]<price_26);
 
-   if(bull) return 1;
-   if(bear) return -1;
+   if(priceAbove && chAbove) return 1;
+   if(priceBelow && chBelow) return -1;
    return 0;
 }
 //------------------------------------------------------------
