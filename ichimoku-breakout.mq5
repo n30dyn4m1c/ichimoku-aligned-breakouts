@@ -125,12 +125,12 @@ void OnTick()
       }
       if(stateFull==1)
       {
-         string msg="Top-down Bullish (H4→M1): "+syms[s];
+         string msg="H4 down Bullish (H4→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
       else if(stateFull==-1)
       {
-         string msg="Top-down Bearish (H4→M1): "+syms[s];
+         string msg="H4 down Bearish (H4→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
 
@@ -145,12 +145,12 @@ void OnTick()
       }
       if(stateH1==1)
       {
-         string msg="Intraday Bullish (H1→M1): "+syms[s];
+         string msg="H1 down Bullish (H1→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
       else if(stateH1==-1)
       {
-         string msg="Intraday Bearish (H1→M1): "+syms[s];
+         string msg="H1 down Bearish (H1→M1): "+syms[s];
          Alert(msg); Print(msg);
       }
    }
