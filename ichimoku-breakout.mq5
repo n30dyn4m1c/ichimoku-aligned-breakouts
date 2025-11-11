@@ -54,37 +54,52 @@ void OnDeinit(const int reason)
 // 1 bull, -1 bear, 0 none
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[]; if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
+   MqlRates rt[]; 
+   if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
-   int sh=1, priceCloud=sh+26, chShift=sh+26, chCloud=sh+52;
+
+   int sh=1;
+   int priceCloud = sh+26;
+   int chShift    = sh+26;
+   int chCloud    = sh+52;
 
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
 
+   // current tenkan/kijun
    if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
    if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
+
+   // cloud for price (26 back)
    if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
    if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
 
+   // chikou at 26 back
    if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
+   // tenkan/kijun at chikou bar
    if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
    if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
+   // cloud at chikou bar (52 back)
    if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
    if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
 
-   double closeP=rt[sh].close;
-   double cHi = MathMax(senA[0],senB[0]);
-   double cLo = MathMin(senA[0],senB[0]);
-   double cHiC= MathMax(senA_ch[0],senB_ch[0]);
-   double cLoC= MathMin(senA_ch[0],senB_ch[0]);
+   double closeP  = rt[sh].close;
+   double price_26= rt[chShift].close;    // price 26 back for chikou compare
+   double cHi  = MathMax(senA[0],senB[0]);
+   double cLo  = MathMin(senA[0],senB[0]);
+   double cHiC = MathMax(senA_ch[0],senB_ch[0]);
+   double cLoC = MathMin(senA_ch[0],senB_ch[0]);
 
-   bool bull = (closeP>cHi && closeP>ten[0] && closeP>kij[0] &&
-                chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0]);
-   bool bear = (closeP<cLo && closeP<ten[0] && closeP<kij[0] &&
-                chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0]);
+   // price rules
+   bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
+   bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
 
-   if(bull) return 1;
-   if(bear) return -1;
+   // chikou rules: cloud52, tenkan26, kijun26, price26
+   bool chAbove = (chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0] && chik[0]>price_26);
+   bool chBelow = (chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0] && chik[0]<price_26);
+
+   if(priceAbove && chAbove) return 1;
+   if(priceBelow && chBelow) return -1;
    return 0;
 }
 //------------------------------------------------------------
