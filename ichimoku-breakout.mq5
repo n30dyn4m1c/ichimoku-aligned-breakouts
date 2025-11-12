@@ -15,7 +15,28 @@ string syms[MAX_SYMS];
 int    symsCount=0;
 datetime lastM1bar=0;
 
-//------------------------------------------------------------
+//------------------------ utils -------------------------------
+void AlertMsg(const string label,const string sym,const int st)
+{
+   string dir=(st==1?"Bullish":"Bearish");
+   string msg=label+" "+dir+": "+sym;
+   Alert(msg); Print(msg);
+}
+
+int AlignRange(const int s,const int hi,const int lo)
+{
+   int state=0;
+   for(int t=hi;t>=lo;t--)
+   {
+      int st=CheckTF(syms[s],TFs[t],ich[s][t]);
+      if(st==0) return 0;
+      if(t==hi) state=st;
+      else if(st!=state) return 0;
+   }
+   return state;
+}
+
+//------------------------ setup -------------------------------
 int ParseSymbols(string list)
 {
    string parts[];
@@ -24,14 +45,12 @@ int ParseSymbols(string list)
    for(int i=0;i<n && cnt<MAX_SYMS;i++)
    {
       string sym = parts[i];
-      StringTrimLeft(sym);
-      StringTrimRight(sym);
-      if(SymbolSelect(sym,true))
-         syms[cnt++] = sym;
+      StringTrimLeft(sym); StringTrimRight(sym);
+      if(SymbolSelect(sym,true)) syms[cnt++] = sym;
    }
    return cnt;
 }
-//------------------------------------------------------------
+
 int OnInit()
 {
    symsCount = ParseSymbols(Symbols);
@@ -44,15 +63,16 @@ int OnInit()
       }
    return(INIT_SUCCEEDED);
 }
-//------------------------------------------------------------
+
 void OnDeinit(const int reason)
 {
    for(int s=0; s<symsCount; s++)
       for(int t=0; t<TF_COUNT; t++)
          IndicatorRelease(ich[s][t]);
 }
-//------------------------------------------------------------
-// 1 bull, -1 bear, 0 none (with full price+chikou rules)
+
+//-------------------- Ichimoku rules --------------------------
+// 1 bull, -1 bear, 0 none (full price+chikou rules)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
    MqlRates rt[]; 
@@ -95,10 +115,11 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(priceBelow && chBelow) return -1;
    return 0;
 }
-//------------------------------------------------------------
+
+//------------------------- loop -------------------------------
 void OnTick()
 {
-   // drive by M1 close
+   // trigger on M1 close
    MqlRates m1[];
    if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
    ArraySetAsSeries(m1,true);
@@ -107,64 +128,20 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
-      // 1) FULL H4→M1 (indexes 5..0)
-      int stateFull=0;
-      for(int t=TF_COUNT-1; t>=0; t--)
-      {
-         int st = CheckTF(syms[s], TFs[t], ich[s][t]);
-         if(st==0){ stateFull=0; break; }
-         if(t==TF_COUNT-1) stateFull=st;
-         else if(st!=stateFull){ stateFull=0; break; }
-      }
-      if(stateFull==1)
-      {
-         string msg="H4 down Bullish (H4→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
-      else if(stateFull==-1)
-      {
-         string msg="H4 down Bearish (H4→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
+      // Highest: H4→M1 (5..0)
+      int st=AlignRange(s,5,0);
+      if(st!=0){ AlertMsg("H4→M1",syms[s],st); continue; }
 
-      // 2) H1→M1 (indexes 4..0)
-      int stateH1=0;
-      for(int t=4; t>=0; t--)
-      {
-         int st = CheckTF(syms[s], TFs[t], ich[s][t]);
-         if(st==0){ stateH1=0; break; }
-         if(t==4) stateH1=st;
-         else if(st!=stateH1){ stateH1=0; break; }
-      }
-      if(stateH1==1)
-      {
-         string msg="H1 down Bullish (H1→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
-      else if(stateH1==-1)
-      {
-         string msg="H1 down Bearish (H1→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
+      // Next: H1→M1 (4..0)
+      st=AlignRange(s,4,0);
+      if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
 
-      // 3) M30→M1 (indexes 3..0)
-      int stateM30=0;
-      for(int t=3; t>=0; t--)
-      {
-         int st = CheckTF(syms[s], TFs[t], ich[s][t]);
-         if(st==0){ stateM30=0; break; }
-         if(t==3) stateM30=st;
-         else if(st!=stateM30){ stateM30=0; break; }
-      }
-      if(stateM30==1)
-      {
-         string msg="M30 down Bullish (M30→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
-      else if(stateM30==-1)
-      {
-         string msg="M30 down Bearish (M30→M1): "+syms[s];
-         Alert(msg); Print(msg);
-      }
+      // Next: M30→M1 (3..0)
+      st=AlignRange(s,3,0);
+      if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
+
+      // Next: M15→M1 (2..0)
+      st=AlignRange(s,2,0);
+      if(st!=0){ AlertMsg("M15→M1",syms[s],st); }
    }
 }
