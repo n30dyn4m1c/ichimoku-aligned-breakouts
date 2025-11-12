@@ -1,60 +1,80 @@
 //+------------------------------------------------------------------+
-//| HTF Ichimoku Alignment (MN1→H4)                                  |
+//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1, M5→M1) |
 //+------------------------------------------------------------------+
 #property strict
 
-input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,XAUUSD,XAGUSD,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash,GOLD,SILVER";
+input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
 input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
 
 #define MAX_SYMS 60
-#define TF_COUNT 4
-// highest → lowest
-ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_MN1,PERIOD_W1,PERIOD_D1,PERIOD_H4};
-
+#define TF_COUNT 6
+// 0..5 = M1,M5,M15,M30,H1,H4
+ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_M1,PERIOD_M5,PERIOD_M15,PERIOD_M30,PERIOD_H1,PERIOD_H4};
 int    ich[MAX_SYMS][TF_COUNT];
 string syms[MAX_SYMS];
 int    symsCount=0;
-datetime lastH4bar=0;
+datetime lastM1bar=0;
 
-//------------------------------------------------------------
+//------------------------ utils -------------------------------
+void AlertMsg(const string label,const string sym,const int st)
+{
+   string dir=(st==1?"Bullish":"Bearish");
+   string msg=label+" "+dir+": "+sym;
+   Alert(msg); Print(msg);
+}
+
+int AlignRange(const int s,const int hi,const int lo)
+{
+   int state=0;
+   for(int t=hi;t>=lo;t--)
+   {
+      int st=CheckTF(syms[s],TFs[t],ich[s][t]);
+      if(st==0) return 0;
+      if(t==hi) state=st;
+      else if(st!=state) return 0;
+   }
+   return state;
+}
+
+//------------------------ setup -------------------------------
 int ParseSymbols(string list)
 {
    string parts[];
-   int n=StringSplit(list,',',parts);
+   int n = StringSplit(list,',',parts);
    int cnt=0;
    for(int i=0;i<n && cnt<MAX_SYMS;i++)
    {
-      string sym=parts[i];
+      string sym = parts[i];
       StringTrimLeft(sym); StringTrimRight(sym);
-      if(SymbolSelect(sym,true))
-         syms[cnt++]=sym;
+      if(SymbolSelect(sym,true)) syms[cnt++] = sym;
    }
    return cnt;
 }
-//------------------------------------------------------------
+
 int OnInit()
 {
-   symsCount=ParseSymbols(Symbols);
+   symsCount = ParseSymbols(Symbols);
    if(symsCount<=0) return(INIT_FAILED);
-   for(int s=0;s<symsCount;s++)
-      for(int t=0;t<TF_COUNT;t++)
+   for(int s=0; s<symsCount; s++)
+      for(int t=0; t<TF_COUNT; t++)
       {
          ich[s][t]=iIchimoku(syms[s],TFs[t],Tenkan,Kijun,SenkouB);
          if(ich[s][t]==INVALID_HANDLE) return(INIT_FAILED);
       }
    return(INIT_SUCCEEDED);
 }
-//------------------------------------------------------------
+
 void OnDeinit(const int reason)
 {
-   for(int s=0;s<symsCount;s++)
-      for(int t=0;t<TF_COUNT;t++)
+   for(int s=0; s<symsCount; s++)
+      for(int t=0; t<TF_COUNT; t++)
          IndicatorRelease(ich[s][t]);
 }
-//------------------------------------------------------------
-// 1 bull, -1 bear, 0 none  (full price + chikou + price26)
+
+//-------------------- Ichimoku rules --------------------------
+// 1 bull, -1 bear, 0 none (full price+chikou rules)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
    MqlRates rt[]; 
@@ -65,8 +85,6 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    int priceCloud = sh+26;
    int chShift    = sh+26;
    int chCloud    = sh+52;
-
-   if(ArraySize(rt)<=chCloud) return 0;   // safety
 
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
@@ -84,7 +102,6 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 
    double closeP   = rt[sh].close;
    double price_26 = rt[chShift].close;
-
    double cHi  = MathMax(senA[0],senB[0]);
    double cLo  = MathMin(senA[0],senB[0]);
    double cHiC = MathMax(senA_ch[0],senB_ch[0]);
@@ -100,36 +117,33 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    if(priceBelow && chBelow) return -1;
    return 0;
 }
-//------------------------------------------------------------
+
+//------------------------- loop -------------------------------
 void OnTick()
 {
-   // fire on H4 close
-   MqlRates h4[];
-   if(CopyRates(_Symbol,PERIOD_H4,0,5,h4)<=0) return;
-   ArraySetAsSeries(h4,true);
-   if(h4[1].time==lastH4bar) return;
-   lastH4bar=h4[1].time;
+   // trigger on M1 close
+   MqlRates m1[];
+   if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
+   ArraySetAsSeries(m1,true);
+   if(m1[1].time==lastM1bar) return;
+   lastM1bar = m1[1].time;
 
-   for(int s=0;s<symsCount;s++)
+   for(int s=0; s<symsCount; s++)
    {
-      int state=0;
-      for(int t=0;t<TF_COUNT;t++)
-      {
-         int st=CheckTF(syms[s],TFs[t],ich[s][t]);
-         if(st==0){ state=0; break; }
-         if(t==0) state=st;
-         else if(st!=state){ state=0; break; }
-      }
+      // Highest: H4→M1 (5..0)
+      int st=AlignRange(s,5,0);
+      if(st!=0){ AlertMsg("H4→M1",syms[s],st); continue; }
 
-      if(state==1)
-      {
-         string msg="HTF Bullish Alignment (MN1→H4): "+syms[s];
-         Alert(msg); Print(msg);
-      }
-      else if(state==-1)
-      {
-         string msg="HTF Bearish Alignment (MN1→H4): "+syms[s];
-         Alert(msg); Print(msg);
-      }
+      // Next: H1→M1 (4..0)
+      st=AlignRange(s,4,0);
+      if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
+
+      // Next: M30→M1 (3..0)
+      st=AlignRange(s,3,0);
+      if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
+
+      // New: M5→M1 (1..0)
+      st=AlignRange(s,1,0);
+      if(st!=0){ AlertMsg("M5→M1",syms[s],st); continue; }
    }
 }
