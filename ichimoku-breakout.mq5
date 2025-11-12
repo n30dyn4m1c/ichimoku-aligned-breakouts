@@ -1,4 +1,6 @@
 //+------------------------------------------------------------------+
+//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1)        |
+//+------------------------------------------------------------------+
 #property strict
 
 input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
@@ -136,12 +138,8 @@ void OnTick()
       st=AlignRange(s,4,0);
       if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
 
-      // Next: M30→M1 (3..0)
+      // Next: M30→M1 (3..0) — stop here
       st=AlignRange(s,3,0);
       if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
-
-      // Next: M15→M1 (2..0)
-      st=AlignRange(s,2,0);
-      if(st!=0){ AlertMsg("M15→M1",syms[s],st); }
    }
 }
