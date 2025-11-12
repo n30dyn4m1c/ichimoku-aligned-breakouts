@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1)        |
+//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1, M5→M1) |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -138,8 +138,12 @@ void OnTick()
       st=AlignRange(s,4,0);
       if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
 
-      // Next: M30→M1 (3..0) — stop here
+      // Next: M30→M1 (3..0)
       st=AlignRange(s,3,0);
       if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
+
+      // New: M5→M1 (1..0)
+      st=AlignRange(s,1,0);
+      if(st!=0){ AlertMsg("M5→M1",syms[s],st); continue; }
    }
 }
