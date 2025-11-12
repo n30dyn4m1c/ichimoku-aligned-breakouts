@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Ichimoku D1→M1 Auto Trader (Gold)                               |
+//| Ichimoku D1→M1 Auto Trader (Gold) – updated Ichimoku logic      |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -22,21 +22,19 @@ int      symsCount=0;
 datetime lastM1bar=0;
 int      MAGIC=20251108;
 
-//------------------------------------------------------------
+//------------------------ utils -------------------------------
 int ParseSymbols(string list)
 {
-   string parts[];
-   int n=StringSplit(list,',',parts), cnt=0;
+   string parts[]; int n=StringSplit(list,',',parts), cnt=0;
    for(int i=0;i<n && cnt<MAX_SYMS;i++)
    {
-      string sym=parts[i];
-      StringTrimLeft(sym); StringTrimRight(sym);
-      if(SymbolSelect(sym,true))
-         syms[cnt++]=sym;
+      string sym=parts[i]; StringTrimLeft(sym); StringTrimRight(sym);
+      if(SymbolSelect(sym,true)) syms[cnt++]=sym;
    }
    return cnt;
 }
-//------------------------------------------------------------
+
+//------------------------ setup -------------------------------
 int OnInit()
 {
    symsCount=ParseSymbols(Symbols);
@@ -50,76 +48,65 @@ int OnInit()
       }
    return(INIT_SUCCEEDED);
 }
-//------------------------------------------------------------
+
 void OnDeinit(const int reason)
 {
    for(int s=0;s<symsCount;s++)
       for(int t=0;t<TF_COUNT;t++)
          IndicatorRelease(ich[s][t]);
 }
-//------------------------------------------------------------
-// 1=bull, -1=bear, 0=none
+
+//-------------------- Ichimoku rules --------------------------
+// 1=bull, -1=bear, 0=none (full price + chikou rules incl. price26)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[];
+   MqlRates rt[]; 
    if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
 
-   int sh=1;
-   int priceCloudShift = sh+26;   // cloud is drawn 26 fwd → compare 26 back
-   int chikouShift     = sh+26;   // chikou is 26 back
-   int chikouCloudShift= sh+52;   // your 52-back cloud rule
+   int sh=1;                         // last closed bar
+   int priceCloud = sh+26;           // cloud drawn +26 → compare 26 back
+   int chShift    = sh+26;           // chikou is 26 back
+   int chCloud    = sh+52;           // cloud at chikou bar (26 more)
 
-   // current tenkan/kijun
-   double ten[1], kij[1];
+   if(ArraySize(rt)<=chCloud) return 0; // safety
+
+   double ten[1],kij[1],senA[1],senB[1],chik[1];
+   double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
+
+   // current TK and cloud (26 back)
    if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
    if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
+   if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
+   if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
 
-   // current cloud (26 back)
-   double senA[1], senB[1];
-   if(CopyBuffer(h,2,priceCloudShift,1,senA)<=0) return 0;
-   if(CopyBuffer(h,3,priceCloudShift,1,senB)<=0) return 0;
+   // chikou at 26 back; TK26; cloud at 52 back
+   if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
+   if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
+   if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
+   if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
+   if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
 
-   // chikou at 26 back
-   double chikou[1];
-   if(CopyBuffer(h,4,chikouShift,1,chikou)<=0) return 0;
+   double closeP   = rt[sh].close;
+   double price_26 = rt[chShift].close;
 
-   // tenkan/kijun at chikou bar (26 back)
-   double ten_ch[1], kij_ch[1];
-   if(CopyBuffer(h,0,chikouShift,1,ten_ch)<=0) return 0;
-   if(CopyBuffer(h,1,chikouShift,1,kij_ch)<=0) return 0;
+   double cHi  = MathMax(senA[0],senB[0]);
+   double cLo  = MathMin(senA[0],senB[0]);
+   double cHiC = MathMax(senA_ch[0],senB_ch[0]);
+   double cLoC = MathMin(senA_ch[0],senB_ch[0]);
 
-   // cloud at chikou bar (52 back)
-   double senA_ch[1], senB_ch[1];
-   if(CopyBuffer(h,2,chikouCloudShift,1,senA_ch)<=0) return 0;
-   if(CopyBuffer(h,3,chikouCloudShift,1,senB_ch)<=0) return 0;
+   bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
+   bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
 
-   double closeP    = rt[sh].close;
-   double price_26  = rt[chikouShift].close;          // price 26 back for chikou vs price
-   double cloudHi   = MathMax(senA[0],senB[0]);
-   double cloudLo   = MathMin(senA[0],senB[0]);
-   double cloudHiCh = MathMax(senA_ch[0],senB_ch[0]);
-   double cloudLoCh = MathMin(senA_ch[0],senB_ch[0]);
-
-   // price rules (current)
-   bool priceAbove = (closeP>cloudHi && closeP>ten[0] && closeP>kij[0]);
-   bool priceBelow = (closeP<cloudLo && closeP<ten[0] && closeP<kij[0]);
-
-   // chikou rules (lagging)
-   bool chAbove = (chikou[0]>cloudHiCh &&
-                   chikou[0]>ten_ch[0] &&
-                   chikou[0]>kij_ch[0] &&
-                   chikou[0]>price_26);
-   bool chBelow = (chikou[0]<cloudLoCh &&
-                   chikou[0]<ten_ch[0] &&
-                   chikou[0]<kij_ch[0] &&
-                   chikou[0]<price_26);
+   bool chAbove = (chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0] && chik[0]>price_26);
+   bool chBelow = (chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0] && chik[0]<price_26);
 
    if(priceAbove && chAbove) return 1;
    if(priceBelow && chBelow) return -1;
    return 0;
 }
-//------------------------------------------------------------
+
+//-------------------- trading utils (unchanged) ---------------
 bool HasOpenPosition(string sym)
 {
    for(int i=PositionsTotal()-1;i>=0;i--)
@@ -132,16 +119,35 @@ bool HasOpenPosition(string sym)
    }
    return false;
 }
-//------------------------------------------------------------
+
 bool OpenOrder(string sym, bool isBuy)
 {
-   double pt    = SymbolInfoDouble(sym,SYMBOL_POINT);
-   double ask   = SymbolInfoDouble(sym,SYMBOL_ASK);
-   double bid   = SymbolInfoDouble(sym,SYMBOL_BID);
-   int    digits= (int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
+   double pt = SymbolInfoDouble(sym,SYMBOL_POINT);
+   double ask = SymbolInfoDouble(sym,SYMBOL_ASK);
+   double bid = SymbolInfoDouble(sym,SYMBOL_BID);
+   int digits = (int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
+
+   // Get M15 Kijun value
+   int kijHandle = iIchimoku(sym, PERIOD_M15, Tenkan, Kijun, SenkouB);
+   double kijun[1];
+   if(CopyBuffer(kijHandle, 1, 1, 1, kijun) <= 0)
+      return false;
+   IndicatorRelease(kijHandle);
+
+   double sl, tp;
+   if(isBuy)
+   {
+      sl = NormalizeDouble(kijun[0] - 100 * pt, digits);
+      tp = NormalizeDouble(ask + TP_Points * pt, digits);
+   }
+   else
+   {
+      sl = NormalizeDouble(kijun[0] + 100 * pt, digits);
+      tp = NormalizeDouble(bid - TP_Points * pt, digits);
+   }
 
    MqlTradeRequest req;
-   MqlTradeResult  res;
+   MqlTradeResult res;
    ZeroMemory(req); ZeroMemory(res);
 
    req.action       = TRADE_ACTION_DEAL;
@@ -154,22 +160,24 @@ bool OpenOrder(string sym, bool isBuy)
    {
       req.type  = ORDER_TYPE_BUY;
       req.price = ask;
-      req.sl    = NormalizeDouble(ask - SL_Points*pt, digits);
-      req.tp    = NormalizeDouble(ask + TP_Points*pt, digits);
+      req.sl    = sl;
+      req.tp    = tp;
    }
    else
    {
       req.type  = ORDER_TYPE_SELL;
       req.price = bid;
-      req.sl    = NormalizeDouble(bid + SL_Points*pt, digits);
-      req.tp    = NormalizeDouble(bid - TP_Points*pt, digits);
+      req.sl    = sl;
+      req.tp    = tp;
    }
 
    if(!OrderSend(req,res)) return false;
    if(res.retcode!=10009 && res.retcode!=10008) return false;
    return true;
 }
-//------------------------------------------------------------
+
+
+//------------------------- loop -------------------------------
 void OnTick()
 {
    // drive on M1 close
@@ -182,10 +190,10 @@ void OnTick()
    for(int s=0;s<symsCount;s++)
    {
       int state=0;
-      // top-down: if D1 fails, we skip the rest
+      // top-down: if D1 fails, skip lower TFs
       for(int t=0;t<TF_COUNT;t++)
       {
-         int st = CheckTF(syms[s],TFs[t],ich[s][t]);
+         int st=CheckTF(syms[s],TFs[t],ich[s][t]);
          if(st==0){ state=0; break; }
          if(t==0) state=st;
          else if(st!=state){ state=0; break; }
@@ -196,14 +204,12 @@ void OnTick()
       if(state==1)
       {
          string msg="Bullish Alignment (D1→M1) BUY: "+syms[s];
-         Alert(msg); Print(msg);
-         OpenOrder(syms[s],true);
+         Alert(msg); Print(msg); OpenOrder(syms[s],true);
       }
       else if(state==-1)
       {
          string msg="Bearish Alignment (D1→M1) SELL: "+syms[s];
-         Alert(msg); Print(msg);
-         OpenOrder(syms[s],false);
+         Alert(msg); Print(msg); OpenOrder(syms[s],false);
       }
    }
 }
