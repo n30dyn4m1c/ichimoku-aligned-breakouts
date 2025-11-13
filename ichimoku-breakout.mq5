@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1)        |
+//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1) + TK   |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -57,6 +57,7 @@ int OnInit()
 {
    symsCount = ParseSymbols(Symbols);
    if(symsCount<=0) return(INIT_FAILED);
+
    for(int s=0; s<symsCount; s++)
       for(int t=0; t<TF_COUNT; t++)
       {
@@ -74,28 +75,30 @@ void OnDeinit(const int reason)
 }
 
 //-------------------- Ichimoku rules --------------------------
-// 1 bull, -1 bear, 0 none (full price+chikou rules)
+// 1 bull, -1 bear, 0 none (full price+chikou rules incl. price_26)
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
    MqlRates rt[]; 
    if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
    ArraySetAsSeries(rt,true);
 
-   int sh=1;
-   int priceCloud = sh+26;
-   int chShift    = sh+26;
-   int chCloud    = sh+52;
+   int sh       = 1;        // last closed bar
+   int priceCloud = sh+26;  // cloud is plotted +26 → compare 26 back
+   int chShift    = sh+26;  // chikou is 26 back
+   int chCloud    = sh+52;  // cloud at chikou bar (another 26)
 
-   if(ArraySize(rt)<=chCloud) return 0; // safety
+   if(ArraySize(rt)<=chCloud) return 0;
 
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
 
+   // current TK and cloud (26 back)
    if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
    if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
    if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
    if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
 
+   // chikou + TK26 + cloud52
    if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
    if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
    if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
@@ -104,6 +107,7 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 
    double closeP   = rt[sh].close;
    double price_26 = rt[chShift].close;
+
    double cHi  = MathMax(senA[0],senB[0]);
    double cLo  = MathMin(senA[0],senB[0]);
    double cHiC = MathMax(senA_ch[0],senB_ch[0]);
@@ -112,11 +116,40 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
    bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
 
-   bool chAbove = (chik[0]>cHiC && chik[0]>ten_ch[0] && chik[0]>kij_ch[0] && chik[0]>price_26);
-   bool chBelow = (chik[0]<cLoC && chik[0]<ten_ch[0] && chik[0]<kij_ch[0] && chik[0]<price_26);
+   bool chAbove = (chik[0]>cHiC &&
+                   chik[0]>ten_ch[0] &&
+                   chik[0]>kij_ch[0] &&
+                   chik[0]>price_26);
+   bool chBelow = (chik[0]<cLoC &&
+                   chik[0]<ten_ch[0] &&
+                   chik[0]<kij_ch[0] &&
+                   chik[0]<price_26);
 
    if(priceAbove && chAbove) return 1;
    if(priceBelow && chBelow) return -1;
+   return 0;
+}
+
+//----------------- M15 Tenkan–Kijun cross check ---------------
+// returns 1 = bullish TK cross up, -1 = bearish TK cross down, 0 = none
+int TKCrossM15(int ichHandleM15,int lookback=36)
+{
+   double ten[],kij[];
+   ArraySetAsSeries(ten,true);
+   ArraySetAsSeries(kij,true);
+
+   int cnt = lookback+1; // shifts 1..lookback+1
+   if(CopyBuffer(ichHandleM15,0,1,cnt,ten) < cnt) return 0;
+   if(CopyBuffer(ichHandleM15,1,1,cnt,kij) < cnt) return 0;
+
+   for(int i=lookback; i>=1; i--)
+   {
+      double prevDiff = ten[i]   - kij[i];
+      double curDiff  = ten[i-1] - kij[i-1];
+
+      if(prevDiff < 0.0 && curDiff > 0.0) return 1;  // TK cross up
+      if(prevDiff > 0.0 && curDiff < 0.0) return -1; // TK cross down
+   }
    return 0;
 }
 
@@ -132,16 +165,37 @@ void OnTick()
 
    for(int s=0; s<symsCount; s++)
    {
+      // M15 Ichimoku handle index in TFs[] is 2
+      int m15Handle = ich[s][2];
+
       // Highest: H4→M1 (5..0)
       int st=AlignRange(s,5,0);
-      if(st!=0){ AlertMsg("H4→M1",syms[s],st); continue; }
+      if(st!=0)
+      {
+         int cross = TKCrossM15(m15Handle);
+         if(cross==st)
+            AlertMsg("H4→M1",syms[s],st);
+         continue;
+      }
 
       // Next: H1→M1 (4..0)
       st=AlignRange(s,4,0);
-      if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
+      if(st!=0)
+      {
+         int cross = TKCrossM15(m15Handle);
+         if(cross==st)
+            AlertMsg("H1→M1",syms[s],st);
+         continue;
+      }
 
-      // Next: M30→M1 (3..0) — stop here
+      // Next: M30→M1 (3..0)
       st=AlignRange(s,3,0);
-      if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
+      if(st!=0)
+      {
+         int cross = TKCrossM15(m15Handle);
+         if(cross==st)
+            AlertMsg("M30→M1",syms[s],st);
+         continue;
+      }
    }
 }
