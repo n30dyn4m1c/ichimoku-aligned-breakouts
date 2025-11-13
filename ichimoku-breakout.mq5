@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1, M5→M1) |
+//| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1)        |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -86,6 +86,8 @@ int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
    int chShift    = sh+26;
    int chCloud    = sh+52;
 
+   if(ArraySize(rt)<=chCloud) return 0; // safety
+
    double ten[1],kij[1],senA[1],senB[1],chik[1];
    double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
 
@@ -138,12 +140,8 @@ void OnTick()
       st=AlignRange(s,4,0);
       if(st!=0){ AlertMsg("H1→M1",syms[s],st); continue; }
 
-      // Next: M30→M1 (3..0)
+      // Next: M30→M1 (3..0) — stop here
       st=AlignRange(s,3,0);
       if(st!=0){ AlertMsg("M30→M1",syms[s],st); continue; }
-
-      // New: M5→M1 (1..0)
-      st=AlignRange(s,1,0);
-      if(st!=0){ AlertMsg("M5→M1",syms[s],st); continue; }
    }
 }
