@@ -20,10 +20,13 @@ datetime lastM1bar=0;
 //------------------------ utils -------------------------------
 void AlertMsg(const string label,const string sym,const int st)
 {
-   string dir=(st==1?"Bullish":"Bearish");
-   string msg=label+" "+dir+": "+sym;
-   Alert(msg); Print(msg);
+   string dir = (st==1 ? "Bullish" : "Bearish");
+   string msg = sym+" | "+label+" | "+dir+" | Check M15 TKx+Pback";
+   Alert(msg);
+   Print(msg);
+   DrawSignalLabel(sym,label,dir);
 }
+
 
 int AlignRange(const int s,const int hi,const int lo)
 {
@@ -153,7 +156,32 @@ int TKCrossM15(int ichHandleM15,int lookback=36)
    return 0;
 }
 
+void DrawSignalLabel(const string sym,const string label,const string dir)
+{
+   if(sym!=_Symbol) return;                    // draw only on current chart
+
+   long   chart_id = ChartID();
+   string name     = "IchAlign_"+sym+"_"+label;
+
+   ObjectDelete(chart_id,name);
+
+   datetime t = TimeCurrent();
+   double   price = SymbolInfoDouble(sym,SYMBOL_BID);
+   if(dir=="Bullish") price += 50*SymbolInfoDouble(sym,SYMBOL_POINT);
+   else               price -= 50*SymbolInfoDouble(sym,SYMBOL_POINT);
+
+   if(!ObjectCreate(chart_id,name,OBJ_TEXT,0,t,price)) return;
+
+   string txt = sym+" | "+label+" | "+dir+" | Wait for M15 pullback";
+   ObjectSetString (chart_id,name,OBJPROP_TEXT,txt);
+   ObjectSetInteger(chart_id,name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(chart_id,name,OBJPROP_COLOR,
+                    dir=="Bullish" ? clrLime : clrRed);
+}
+
+
 //------------------------- loop -------------------------------
+
 void OnTick()
 {
    // trigger on M1 close
@@ -163,38 +191,29 @@ void OnTick()
    if(m1[1].time==lastM1bar) return;
    lastM1bar = m1[1].time;
 
-   for(int s=0; s<symsCount; s++)
+   for(int s = 0; s < symsCount; s++)
    {
-      // M15 Ichimoku handle index in TFs[] is 2
-      int m15Handle = ich[s][2];
-
       // Highest: H4→M1 (5..0)
-      int st=AlignRange(s,5,0);
-      if(st!=0)
+      int st = AlignRange(s,5,0);
+      if(st != 0)
       {
-         int cross = TKCrossM15(m15Handle);
-         if(cross==st)
-            AlertMsg("H4→M1",syms[s],st);
+         AlertMsg("H4→M1", syms[s], st);
          continue;
       }
 
       // Next: H1→M1 (4..0)
-      st=AlignRange(s,4,0);
-      if(st!=0)
+      st = AlignRange(s,4,0);
+      if(st != 0)
       {
-         int cross = TKCrossM15(m15Handle);
-         if(cross==st)
-            AlertMsg("H1→M1",syms[s],st);
+         AlertMsg("H1→M1", syms[s], st);
          continue;
       }
 
       // Next: M30→M1 (3..0)
-      st=AlignRange(s,3,0);
-      if(st!=0)
+      st = AlignRange(s,3,0);
+      if(st != 0)
       {
-         int cross = TKCrossM15(m15Handle);
-         if(cross==st)
-            AlertMsg("M30→M1",syms[s],st);
+         AlertMsg("M30→M1", syms[s], st);
          continue;
       }
    }
