@@ -1,5 +1,9 @@
 //+------------------------------------------------------------------+
-//| HTF Ichimoku Alignment (MN1→H4)                                  |
+//| Ichimoku Multi-TF EA |
+//| Author: Neo Malesa |
+//| Version: 1.00 |
+//| Developed with ChatGPT assistance |
+//| © 2025 Neo Malesa – All Rights Reserved |
 //+------------------------------------------------------------------+
 #property strict
 
