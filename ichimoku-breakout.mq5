@@ -1,5 +1,10 @@
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1) + TK   |
+//| Author: Neo Malesa |
+//| Version: 1.00 |
+//| Developed with ChatGPT assistance |
+//| © 2025 Neo Malesa – All Rights Reserved |
 //+------------------------------------------------------------------+
 #property strict
 
