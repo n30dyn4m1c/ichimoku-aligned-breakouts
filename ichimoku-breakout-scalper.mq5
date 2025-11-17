@@ -3,7 +3,7 @@
 //+------------------------------------------------------------------+
 #property strict
 
-input string Symbols   = "XAUUSD,XAUEUR,GOLD";
+input string Symbols   = "XAUEUR,GOLD";
 input int    Tenkan    = 9;
 input int    Kijun     = 26;
 input int    SenkouB   = 52;
