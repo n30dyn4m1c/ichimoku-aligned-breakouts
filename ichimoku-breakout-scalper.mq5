@@ -1,5 +1,10 @@
 //+------------------------------------------------------------------+
 //| Ichimoku D1→M1 Auto Trader (Gold) – updated Ichimoku logic      |
+//| Author: Neo Malesa |
+//| Version: 1.00 |
+//| Developed with ChatGPT assistance |
+//| © 2025 Neo Malesa – All Rights Reserved |
+//+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 #property strict
 
