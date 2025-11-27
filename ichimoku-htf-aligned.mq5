@@ -14,9 +14,9 @@ input int    Kijun   = 26;
 input int    SenkouB = 52;
 
 #define MAX_SYMS 60
-#define TF_COUNT 4
+#define TF_COUNT 6
 // highest → lowest
-ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_MN1,PERIOD_W1,PERIOD_D1,PERIOD_H4};
+ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_MN1,PERIOD_W1,PERIOD_D1,PERIOD_H12,PERIOD_H8,PERIOD_H4};
 
 int    ich[MAX_SYMS][TF_COUNT];
 string syms[MAX_SYMS];
