@@ -1,14 +1,10 @@
 //+------------------------------------------------------------------+
 //| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1) + TK   |
-//| Author: Neo Malesa |
-//| Version: 1.00 |
-//| Developed with ChatGPT assistance |
-//| © 2025 Neo Malesa – All Rights Reserved |
 //+------------------------------------------------------------------+
 #property strict
 
-//input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
-input string Symbols = "GOLD";
+input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
+//input string Symbols = "GOLD,US30Cash,XAUEUR,XAUJPY,XAUCNH,USDJPY";
 input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
@@ -61,6 +57,20 @@ int ParseSymbols(string list)
    return cnt;
 }
 
+//---------------- HTF set for D→H4→H1→M30→M15 ----------------
+#define HTF_COUNT 5
+ENUM_TIMEFRAMES HTFs[HTF_COUNT] =
+{
+   PERIOD_D1,   // 0
+   PERIOD_H4,   // 1
+   PERIOD_H1,   // 2
+   PERIOD_M30,  // 3
+   PERIOD_M15   // 4
+};
+
+int ichHTF[MAX_SYMS][HTF_COUNT];
+
+
 int OnInit()
 {
    symsCount = ParseSymbols(Symbols);
@@ -72,7 +82,18 @@ int OnInit()
          ich[s][t]=iIchimoku(syms[s],TFs[t],Tenkan,Kijun,SenkouB);
          if(ich[s][t]==INVALID_HANDLE) return(INIT_FAILED);
       }
+      
+       // Load high-TF Ichimoku handles
+   for(int s=0; s<symsCount; s++)
+   for(int t=0; t<HTF_COUNT; t++)
+   {
+      ichHTF[s][t] = iIchimoku(syms[s], HTFs[t], Tenkan, Kijun, SenkouB);
+      if(ichHTF[s][t] == INVALID_HANDLE) return INIT_FAILED;
+   }
    return(INIT_SUCCEEDED);
+   
+
+
 }
 
 void OnDeinit(const int reason)
@@ -80,6 +101,11 @@ void OnDeinit(const int reason)
    for(int s=0; s<symsCount; s++)
       for(int t=0; t<TF_COUNT; t++)
          IndicatorRelease(ich[s][t]);
+         
+   for(int s=0; s<symsCount; s++)
+   for(int t=0; t<HTF_COUNT; t++)
+      IndicatorRelease(ichHTF[s][t]);
+
 }
 
 //-------------------- Ichimoku rules --------------------------
@@ -177,12 +203,60 @@ void DrawSignalLabel(const string sym,const string label,const string dir)
 
    if(!ObjectCreate(chart_id,name,OBJ_TEXT,0,t,price)) return;
 
-   string txt = sym+" | "+label+" | "+dir+" | Wait for M15 pullback";
+   string txt = sym+" | "+label+" | "+dir+" | Check M15 TKx+Pback";
    ObjectSetString (chart_id,name,OBJPROP_TEXT,txt);
    ObjectSetInteger(chart_id,name,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(chart_id,name,OBJPROP_COLOR,
                     dir=="Bullish" ? clrLime : clrRed);
 }
+
+//--------------- Check D→H4→H1→M30→M15 alignment --------------
+int Align_D_H4_H1_M30_M15(int s)
+{
+   int state = 0;
+
+   for(int t=0; t<HTF_COUNT; t++)
+   {
+      int st = CheckTF(syms[s], HTFs[t], ichHTF[s][t]);
+
+      if(st == 0) return 0;
+
+      if(t == 0) state = st;
+      else if(st != state) return 0;
+   }
+
+   return state;
+}
+
+//==============================================================
+// Alignment: H4 → H1 → M30 → M15
+// TF indexes: H4=5, H1=4, M30=3, M15=2
+//==============================================================
+int Align_H4_H1_M30_M15(int s)
+{
+    int state = 0;
+
+    // H4 (highest of this group)
+    int st = CheckTF(syms[s], TFs[5], ich[s][5]);
+    if(st == 0) return 0;
+    state = st;
+
+    // H1
+    st = CheckTF(syms[s], TFs[4], ich[s][4]);
+    if(st != state) return 0;
+
+    // M30
+    st = CheckTF(syms[s], TFs[3], ich[s][3]);
+    if(st != state) return 0;
+
+    // M15
+    st = CheckTF(syms[s], TFs[2], ich[s][2]);
+    if(st != state) return 0;
+
+    return state;   // 1 bullish, -1 bearish
+}
+
+
 
 
 //------------------------- loop -------------------------------
@@ -221,5 +295,22 @@ void OnTick()
          AlertMsg("M30→M1", syms[s], st);
          continue;
       }
+      
+      // New additional alert: D→H4→H1→M30→M15
+      int stHTF = Align_D_H4_H1_M30_M15(s);
+      if(stHTF != 0)
+      {
+         AlertMsg("D→H4→H1→M30→M15", syms[s], stHTF);
+      }
+      
+      int stH4H1M30M15 = Align_H4_H1_M30_M15(s);
+      if(stH4H1M30M15 != 0)
+      {
+         AlertMsg("H4→H1→M30→M15", syms[s], stH4H1M30M15);
+      }
+
    }
+   
+ 
+
 }
