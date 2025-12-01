@@ -1,316 +1,356 @@
 //+------------------------------------------------------------------+
 //| Ichimoku Multi-TF Alignment Alerts (H4→M1, H1→M1, M30→M1) + TK   |
+//|------------------------------------------------------------------|
+//| Original Code: n30dyn4m1c, Neo Malesa                           |
+//| Development Assistance: ChatGPT and Gemini                       |
 //+------------------------------------------------------------------+
 #property strict
 
+//--- Input Parameters ---
 input string Symbols = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,SILVER,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
-//input string Symbols = "GOLD,US30Cash,XAUEUR,XAUJPY,XAUCNH,USDJPY";
+//input string Symbols = "GOLD,US30Cash,BTCUSD"; // Use when only monitoring these three
 input int    Tenkan  = 9;
 input int    Kijun   = 26;
 input int    SenkouB = 52;
 
+//--- Constants and Global Variables ---
 #define MAX_SYMS 60
 #define TF_COUNT 6
-// 0..5 = M1,M5,M15,M30,H1,H4
-ENUM_TIMEFRAMES TFs[TF_COUNT]={PERIOD_M1,PERIOD_M5,PERIOD_M15,PERIOD_M30,PERIOD_H1,PERIOD_H4};
-int    ich[MAX_SYMS][TF_COUNT];
+#define HTF_COUNT 5
+
+// 0..5 = M1, M5, M15, M30, H1, H4
+ENUM_TIMEFRAMES TFs[TF_COUNT] = {PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30, PERIOD_H1, PERIOD_H4};
+// 0..4 = D1, H4, H1, M30, M15
+ENUM_TIMEFRAMES HTFs[HTF_COUNT] = {PERIOD_D1, PERIOD_H4, PERIOD_H1, PERIOD_M30, PERIOD_M15};
+
+int    ich[MAX_SYMS][TF_COUNT];      // Handles for TFs[0] to TFs[5]
+int    ichHTF[MAX_SYMS][HTF_COUNT];  // Handles for HTFs[0] to HTFs[4]
 string syms[MAX_SYMS];
-int    symsCount=0;
-datetime lastM1bar=0;
+int    symsCount = 0;
+datetime lastM1bar = 0;
 
-//------------------------ utils -------------------------------
-void AlertMsg(const string label,const string sym,const int st)
-{
-   string dir = (st==1 ? "Bullish" : "Bearish");
-   string msg = sym+" | "+label+" | "+dir+" | Check M15 TKx+Pback";
-   Alert(msg);
-   Print(msg);
-   DrawSignalLabel(sym,label,dir);
-}
+//==============================================================
+// Initialization and Deinitialization
+//==============================================================
 
-
-int AlignRange(const int s,const int hi,const int lo)
-{
-   int state=0;
-   for(int t=hi;t>=lo;t--)
-   {
-      int st=CheckTF(syms[s],TFs[t],ich[s][t]);
-      if(st==0) return 0;
-      if(t==hi) state=st;
-      else if(st!=state) return 0;
-   }
-   return state;
-}
-
-//------------------------ setup -------------------------------
+//--- Utility function to parse the input symbol list ---
 int ParseSymbols(string list)
 {
-   string parts[];
-   int n = StringSplit(list,',',parts);
-   int cnt=0;
-   for(int i=0;i<n && cnt<MAX_SYMS;i++)
-   {
-      string sym = parts[i];
-      StringTrimLeft(sym); StringTrimRight(sym);
-      if(SymbolSelect(sym,true)) syms[cnt++] = sym;
-   }
-   return cnt;
+    string parts[];
+    int n = StringSplit(list, ',', parts);
+    int cnt = 0;
+
+    for(int i = 0; i < n && cnt < MAX_SYMS; i++)
+    {
+        string sym = parts[i];
+        StringTrimLeft(sym);
+        StringTrimRight(sym);
+        if(SymbolSelect(sym, true)) syms[cnt++] = sym;
+    }
+    return cnt;
 }
-
-//---------------- HTF set for D→H4→H1→M30→M15 ----------------
-#define HTF_COUNT 5
-ENUM_TIMEFRAMES HTFs[HTF_COUNT] =
-{
-   PERIOD_D1,   // 0
-   PERIOD_H4,   // 1
-   PERIOD_H1,   // 2
-   PERIOD_M30,  // 3
-   PERIOD_M15   // 4
-};
-
-int ichHTF[MAX_SYMS][HTF_COUNT];
-
 
 int OnInit()
 {
-   symsCount = ParseSymbols(Symbols);
-   if(symsCount<=0) return(INIT_FAILED);
+    symsCount = ParseSymbols(Symbols);
+    if(symsCount <= 0) return(INIT_FAILED);
 
-   for(int s=0; s<symsCount; s++)
-      for(int t=0; t<TF_COUNT; t++)
-      {
-         ich[s][t]=iIchimoku(syms[s],TFs[t],Tenkan,Kijun,SenkouB);
-         if(ich[s][t]==INVALID_HANDLE) return(INIT_FAILED);
-      }
-      
-       // Load high-TF Ichimoku handles
-   for(int s=0; s<symsCount; s++)
-   for(int t=0; t<HTF_COUNT; t++)
-   {
-      ichHTF[s][t] = iIchimoku(syms[s], HTFs[t], Tenkan, Kijun, SenkouB);
-      if(ichHTF[s][t] == INVALID_HANDLE) return INIT_FAILED;
-   }
-   return(INIT_SUCCEEDED);
-   
+    // Load standard Ichimoku handles (M1 to H4)
+    for(int s = 0; s < symsCount; s++)
+    {
+        for(int t = 0; t < TF_COUNT; t++)
+        {
+            ich[s][t] = iIchimoku(syms[s], TFs[t], Tenkan, Kijun, SenkouB);
+            if(ich[s][t] == INVALID_HANDLE) return(INIT_FAILED);
+        }
+    }
 
+    // Load high-TF Ichimoku handles (D1 to M15)
+    for(int s = 0; s < symsCount; s++)
+    {
+        for(int t = 0; t < HTF_COUNT; t++)
+        {
+            ichHTF[s][t] = iIchimoku(syms[s], HTFs[t], Tenkan, Kijun, SenkouB);
+            if(ichHTF[s][t] == INVALID_HANDLE) return INIT_FAILED;
+        }
+    }
 
+    return(INIT_SUCCEEDED);
 }
 
 void OnDeinit(const int reason)
 {
-   for(int s=0; s<symsCount; s++)
-      for(int t=0; t<TF_COUNT; t++)
-         IndicatorRelease(ich[s][t]);
-         
-   for(int s=0; s<symsCount; s++)
-   for(int t=0; t<HTF_COUNT; t++)
-      IndicatorRelease(ichHTF[s][t]);
+    // Release standard Ichimoku handles
+    for(int s = 0; s < symsCount; s++)
+    {
+        for(int t = 0; t < TF_COUNT; t++)
+        {
+            IndicatorRelease(ich[s][t]);
+        }
+    }
 
+    // Release high-TF Ichimoku handles
+    for(int s = 0; s < symsCount; s++)
+    {
+        for(int t = 0; t < HTF_COUNT; t++)
+        {
+            IndicatorRelease(ichHTF[s][t]);
+        }
+    }
 }
 
-//-------------------- Ichimoku rules --------------------------
-// 1 bull, -1 bear, 0 none (full price+chikou rules incl. price_26)
+//==============================================================
+// Alerting and Drawing Functions
+//==============================================================
+
+//--- Draws the signal label on the current chart symbol only ---
+void DrawSignalLabel(const string sym, const string label, const string dir)
+{
+    if(sym != _Symbol) return; // Draw only on current chart
+
+    long    chart_id = ChartID();
+    string  name     = "IchAlign_" + sym + "_" + label;
+
+    ObjectDelete(chart_id, name);
+
+    datetime t = TimeCurrent();
+    double   price = SymbolInfoDouble(sym, SYMBOL_BID);
+
+    // Adjust vertical position of the label
+    double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+    if(dir == "Bullish") price += 50 * point;
+    else                 price -= 50 * point;
+
+    if(!ObjectCreate(chart_id, name, OBJ_TEXT, 0, t, price)) return;
+
+    string txt = sym + " | " + label + " | " + dir + " | Check M15 TKx+Pback";
+    ObjectSetString(chart_id, name, OBJPROP_TEXT, txt);
+    ObjectSetInteger(chart_id, name, OBJPROP_FONTSIZE, 9);
+    ObjectSetInteger(chart_id, name, OBJPROP_COLOR,
+                     dir == "Bullish" ? clrLime : clrRed);
+}
+
+//--- Sends an alert and prints the message ---
+void AlertMsg(const string label, const string sym, const int st)
+{
+    string dir = (st == 1 ? "Bullish" : "Bearish");
+    string msg = sym + " | " + label + " | " + dir + " | Check M15 TKx+Pback";
+    Alert(msg);
+    Print(msg);
+    DrawSignalLabel(sym, label, dir);
+}
+
+//==============================================================
+// Ichimoku Rule Check and Alignment Functions
+//==============================================================
+
+//--- Checks Ichimoku rules for a single TF (1=bull, -1=bear, 0=none) ---
 int CheckTF(string sym, ENUM_TIMEFRAMES tf, int h)
 {
-   MqlRates rt[]; 
-   if(CopyRates(sym,tf,0,120,rt)<=0) return 0;
-   ArraySetAsSeries(rt,true);
+    MqlRates rt[];
+    if(CopyRates(sym, tf, 0, 120, rt) <= 0) return 0;
+    ArraySetAsSeries(rt, true);
 
-   int sh       = 1;        // last closed bar
-   int priceCloud = sh+26;  // cloud is plotted +26 → compare 26 back
-   int chShift    = sh+26;  // chikou is 26 back
-   int chCloud    = sh+52;  // cloud at chikou bar (another 26)
+    int sh           = 1;      // Last closed bar
+    int priceCloud   = sh + 26; // Cloud is plotted +26 periods (compare 26 back)
+    int chShift      = sh + 26; // Chikou is 26 periods back (Price 26 back)
+    int chCloud      = sh + 52; // Cloud at chikou bar (52 periods back)
 
-   if(ArraySize(rt)<=chCloud) return 0;
+    if(ArraySize(rt) <= chCloud) return 0;
 
-   double ten[1],kij[1],senA[1],senB[1],chik[1];
-   double ten_ch[1],kij_ch[1],senA_ch[1],senB_ch[1];
+    double ten[1], kij[1], senA[1], senB[1], chik[1];
+    double ten_ch[1], kij_ch[1], senA_ch[1], senB_ch[1];
 
-   // current TK and cloud (26 back)
-   if(CopyBuffer(h,0,sh,1,ten)<=0) return 0;
-   if(CopyBuffer(h,1,sh,1,kij)<=0) return 0;
-   if(CopyBuffer(h,2,priceCloud,1,senA)<=0) return 0;
-   if(CopyBuffer(h,3,priceCloud,1,senB)<=0) return 0;
+    // Current TK and Cloud (26 back)
+    if(CopyBuffer(h, 0, sh, 1, ten) <= 0) return 0;
+    if(CopyBuffer(h, 1, sh, 1, kij) <= 0) return 0;
+    if(CopyBuffer(h, 2, priceCloud, 1, senA) <= 0) return 0;
+    if(CopyBuffer(h, 3, priceCloud, 1, senB) <= 0) return 0;
 
-   // chikou + TK26 + cloud52
-   if(CopyBuffer(h,4,chShift,1,chik)<=0) return 0;
-   if(CopyBuffer(h,0,chShift,1,ten_ch)<=0) return 0;
-   if(CopyBuffer(h,1,chShift,1,kij_ch)<=0) return 0;
-   if(CopyBuffer(h,2,chCloud,1,senA_ch)<=0) return 0;
-   if(CopyBuffer(h,3,chCloud,1,senB_ch)<=0) return 0;
+    // Chikou, TK at Chikou position (26 back), and Cloud (52 back)
+    if(CopyBuffer(h, 4, chShift, 1, chik) <= 0) return 0;
+    if(CopyBuffer(h, 0, chShift, 1, ten_ch) <= 0) return 0;
+    if(CopyBuffer(h, 1, chShift, 1, kij_ch) <= 0) return 0;
+    if(CopyBuffer(h, 2, chCloud, 1, senA_ch) <= 0) return 0;
+    if(CopyBuffer(h, 3, chCloud, 1, senB_ch) <= 0) return 0;
 
-   double closeP   = rt[sh].close;
-   double price_26 = rt[chShift].close;
+    double closeP   = rt[sh].close;
+    double price_26 = rt[chShift].close;
 
-   double cHi  = MathMax(senA[0],senB[0]);
-   double cLo  = MathMin(senA[0],senB[0]);
-   double cHiC = MathMax(senA_ch[0],senB_ch[0]);
-   double cLoC = MathMin(senA_ch[0],senB_ch[0]);
+    double cHi  = MathMax(senA[0], senB[0]);
+    double cLo  = MathMin(senA[0], senB[0]);
+    double cHiC = MathMax(senA_ch[0], senB_ch[0]);
+    double cLoC = MathMin(senA_ch[0], senB_ch[0]);
 
-   bool priceAbove = (closeP>cHi && closeP>ten[0] && closeP>kij[0]);
-   bool priceBelow = (closeP<cLo && closeP<ten[0] && closeP<kij[0]);
+    // Price relative to TK/Cloud on the current bar
+    bool priceAbove = (closeP > cHi && closeP > ten[0] && closeP > kij[0]);
+    bool priceBelow = (closeP < cLo && closeP < ten[0] && closeP < kij[0]);
 
-   bool chAbove = (chik[0]>cHiC &&
-                   chik[0]>ten_ch[0] &&
-                   chik[0]>kij_ch[0] &&
-                   chik[0]>price_26);
-   bool chBelow = (chik[0]<cLoC &&
-                   chik[0]<ten_ch[0] &&
-                   chik[0]<kij_ch[0] &&
-                   chik[0]<price_26);
+    // Chikou relative to TK/Cloud/Price on the 26-bar-back position
+    bool chAbove = (chik[0] > cHiC &&
+                    chik[0] > ten_ch[0] &&
+                    chik[0] > kij_ch[0] &&
+                    chik[0] > price_26);
+    bool chBelow = (chik[0] < cLoC &&
+                    chik[0] < ten_ch[0] &&
+                    chik[0] < kij_ch[0] &&
+                    chik[0] < price_26);
 
-   if(priceAbove && chAbove) return 1;
-   if(priceBelow && chBelow) return -1;
-   return 0;
+    // Full Bullish Alignment
+    if(priceAbove && chAbove) return 1;
+    // Full Bearish Alignment
+    if(priceBelow && chBelow) return -1;
+
+    return 0;
 }
 
-//----------------- M15 Tenkan–Kijun cross check ---------------
-// returns 1 = bullish TK cross up, -1 = bearish TK cross down, 0 = none
-int TKCrossM15(int ichHandleM15,int lookback=36)
+//--- Checks alignment across a range of TFs (e.g., H4->M1 is hi=5, lo=0) ---
+int AlignRange(const int s, const int hi, const int lo)
 {
-   double ten[],kij[];
-   ArraySetAsSeries(ten,true);
-   ArraySetAsSeries(kij,true);
+    int state = 0; // Final alignment state: 1=Bullish, -1=Bearish, 0=None
 
-   int cnt = lookback+1; // shifts 1..lookback+1
-   if(CopyBuffer(ichHandleM15,0,1,cnt,ten) < cnt) return 0;
-   if(CopyBuffer(ichHandleM15,1,1,cnt,kij) < cnt) return 0;
+    // Iterate from highest TF (hi) down to lowest TF (lo)
+    for(int t = hi; t >= lo; t--)
+    {
+        int st = CheckTF(syms[s], TFs[t], ich[s][t]);
 
-   for(int i=lookback; i>=1; i--)
-   {
-      double prevDiff = ten[i]   - kij[i];
-      double curDiff  = ten[i-1] - kij[i-1];
+        // If any TF is not aligned, the whole range is not aligned
+        if(st == 0) return 0;
 
-      if(prevDiff < 0.0 && curDiff > 0.0) return 1;  // TK cross up
-      if(prevDiff > 0.0 && curDiff < 0.0) return -1; // TK cross down
-   }
-   return 0;
+        // Set the reference state on the highest TF
+        if(t == hi)
+        {
+            state = st;
+        }
+        // Check if the current TF alignment matches the highest TF
+        else if(st != state)
+        {
+            return 0; // Alignment mismatch
+        }
+    }
+    return state; // Full alignment detected
 }
 
-void DrawSignalLabel(const string sym,const string label,const string dir)
-{
-   if(sym!=_Symbol) return;                    // draw only on current chart
-
-   long   chart_id = ChartID();
-   string name     = "IchAlign_"+sym+"_"+label;
-
-   ObjectDelete(chart_id,name);
-
-   datetime t = TimeCurrent();
-   double   price = SymbolInfoDouble(sym,SYMBOL_BID);
-   if(dir=="Bullish") price += 50*SymbolInfoDouble(sym,SYMBOL_POINT);
-   else               price -= 50*SymbolInfoDouble(sym,SYMBOL_POINT);
-
-   if(!ObjectCreate(chart_id,name,OBJ_TEXT,0,t,price)) return;
-
-   string txt = sym+" | "+label+" | "+dir+" | Check M15 TKx+Pback";
-   ObjectSetString (chart_id,name,OBJPROP_TEXT,txt);
-   ObjectSetInteger(chart_id,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(chart_id,name,OBJPROP_COLOR,
-                    dir=="Bullish" ? clrLime : clrRed);
-}
-
-//--------------- Check D→H4→H1→M30→M15 alignment --------------
+//--- Check D1→H4→H1→M30→M15 alignment (using HTFs array) ---
 int Align_D_H4_H1_M30_M15(int s)
 {
-   int state = 0;
+    int state = 0; // Final alignment state: 1=Bullish, -1=Bearish, 0=None
 
-   for(int t=0; t<HTF_COUNT; t++)
-   {
-      int st = CheckTF(syms[s], HTFs[t], ichHTF[s][t]);
+    for(int t = 0; t < HTF_COUNT; t++) // HTFs: 0=D1, 1=H4, 2=H1, 3=M30, 4=M15
+    {
+        int st = CheckTF(syms[s], HTFs[t], ichHTF[s][t]);
 
-      if(st == 0) return 0;
+        if(st == 0) return 0;
 
-      if(t == 0) state = st;
-      else if(st != state) return 0;
-   }
+        if(t == 0) state = st; // Set reference state from D1
+        else if(st != state) return 0;
+    }
 
-   return state;
+    return state;
 }
 
-//==============================================================
-// Alignment: H4 → H1 → M30 → M15
-// TF indexes: H4=5, H1=4, M30=3, M15=2
-//==============================================================
+//--- Alignment: H4 → H1 → M30 → M15 (using standard TFs array) ---
 int Align_H4_H1_M30_M15(int s)
 {
-    int state = 0;
+    // TF indexes: H4=5, H1=4, M30=3, M15=2 (from TFs array)
+    // The previous implementation was:
+    // int st = CheckTF(syms[s], TFs[5], ich[s][5]); if(st == 0) return 0; state = st;
+    // st = CheckTF(syms[s], TFs[4], ich[s][4]); if(st != state) return 0;
+    // st = CheckTF(syms[s], TFs[3], ich[s][3]); if(st != state) return 0;
+    // st = CheckTF(syms[s], TFs[2], ich[s][2]); if(st != state) return 0;
+    // return state;
 
-    // H4 (highest of this group)
-    int st = CheckTF(syms[s], TFs[5], ich[s][5]);
-    if(st == 0) return 0;
-    state = st;
-
-    // H1
-    st = CheckTF(syms[s], TFs[4], ich[s][4]);
-    if(st != state) return 0;
-
-    // M30
-    st = CheckTF(syms[s], TFs[3], ich[s][3]);
-    if(st != state) return 0;
-
-    // M15
-    st = CheckTF(syms[s], TFs[2], ich[s][2]);
-    if(st != state) return 0;
-
-    return state;   // 1 bullish, -1 bearish
+    // This can be simplified by calling AlignRange for this specific range
+    // AlignRange(s, hi, lo) where hi=5 (H4) and lo=2 (M15)
+    return AlignRange(s, 5, 2);
 }
 
+//--- M15 Tenkan-Kijun cross check (1=up, -1=down, 0=none) ---
+int TKCrossM15(int ichHandleM15, int lookback = 36)
+{
+    double ten[], kij[];
+    ArraySetAsSeries(ten, true);
+    ArraySetAsSeries(kij, true);
 
+    // Copy shifts 1 (last closed bar) up to lookback+1
+    int cnt = lookback + 1;
+    if(CopyBuffer(ichHandleM15, 0, 1, cnt, ten) < cnt) return 0;
+    if(CopyBuffer(ichHandleM15, 1, 1, cnt, kij) < cnt) return 0;
 
+    // Check for a cross between ten[i] and ten[i-1]
+    for(int i = lookback; i >= 1; i--)
+    {
+        double prevDiff = ten[i] - kij[i];   // Difference at bar i (older bar)
+        double curDiff  = ten[i - 1] - kij[i - 1]; // Difference at bar i-1 (newer bar)
 
-//------------------------- loop -------------------------------
+        // Previous was Tenkan < Kijun AND Current is Tenkan > Kijun
+        if(prevDiff < 0.0 && curDiff > 0.0) return 1;  // TK cross up (Bullish)
+
+        // Previous was Tenkan > Kijun AND Current is Tenkan < Kijun
+        if(prevDiff > 0.0 && curDiff < 0.0) return -1; // TK cross down (Bearish)
+    }
+    return 0;
+}
+
+//==============================================================
+// Main Loop
+//==============================================================
 
 void OnTick()
 {
-   // trigger on M1 close
-   MqlRates m1[];
-   if(CopyRates(_Symbol,PERIOD_M1,0,5,m1)<=0) return;
-   ArraySetAsSeries(m1,true);
-   if(m1[1].time==lastM1bar) return;
-   lastM1bar = m1[1].time;
+    //--- 1. Check for new M1 bar close on the current chart symbol ---
+    MqlRates m1[];
+    if(CopyRates(_Symbol, PERIOD_M1, 0, 5, m1) <= 0) return;
+    ArraySetAsSeries(m1, true);
 
-   for(int s = 0; s < symsCount; s++)
-   {
-      // Highest: H4→M1 (5..0)
-      int st = AlignRange(s,5,0);
-      if(st != 0)
-      {
-         AlertMsg("H4→M1", syms[s], st);
-         continue;
-      }
+    // m1[1].time is the timestamp of the last *closed* M1 bar
+    if(m1[1].time == lastM1bar) return;
+    lastM1bar = m1[1].time;
 
-      // Next: H1→M1 (4..0)
-      st = AlignRange(s,4,0);
-      if(st != 0)
-      {
-         AlertMsg("H1→M1", syms[s], st);
-         continue;
-      }
+    //--- 2. Loop through all symbols and check alignments ---
+    for(int s = 0; s < symsCount; s++)
+    {
+        int st = 0;
+        string currentSym = syms[s];
 
-      // Next: M30→M1 (3..0)
-      st = AlignRange(s,3,0);
-      if(st != 0)
-      {
-         AlertMsg("M30→M1", syms[s], st);
-         continue;
-      }
-      
-      // New additional alert: D→H4→H1→M30→M15
-      int stHTF = Align_D_H4_H1_M30_M15(s);
-      if(stHTF != 0)
-      {
-         AlertMsg("D→H4→H1→M30→M15", syms[s], stHTF);
-      }
-      
-      int stH4H1M30M15 = Align_H4_H1_M30_M15(s);
-      if(stH4H1M30M15 != 0)
-      {
-         AlertMsg("H4→H1→M30→M15", syms[s], stH4H1M30M15);
-      }
+        //--- Check 1: Highest Alignment: H4 → M1 (TFs indexes 5..0) ---
+        st = AlignRange(s, 5, 0);
+        if(st != 0)
+        {
+            AlertMsg("H4→M1", currentSym, st);
+            continue; // Stop checking this symbol if the highest level alert is triggered
+        }
 
-   }
-   
- 
+        //--- Check 2: Next Alignment: H1 → M1 (TFs indexes 4..0) ---
+        st = AlignRange(s, 4, 0);
+        if(st != 0)
+        {
+            AlertMsg("H1→M1", currentSym, st);
+            continue;
+        }
 
+        //--- Check 3: Next Alignment: M30 → M1 (TFs indexes 3..0) ---
+        st = AlignRange(s, 3, 0);
+        if(st != 0)
+        {
+            AlertMsg("M30→M1", currentSym, st);
+            continue;
+        }
+
+        //--- Check 4: New additional alert: D→H4→H1→M30→M15 (HTFs array) ---
+        int stHTF = Align_D_H4_H1_M30_M15(s);
+        if(stHTF != 0)
+        {
+            AlertMsg("D→H4→H1→M30→M15", currentSym, stHTF);
+            // No 'continue' here, as it's an additional, separate condition
+        }
+
+        //--- Check 5: H4→H1→M30→M15 alignment (TFs indexes 5..2) ---
+        // The implementation of Align_H4_H1_M30_M15 now calls AlignRange(s, 5, 2)
+        int stH4H1M30M15 = Align_H4_H1_M30_M15(s);
+        if(stH4H1M30M15 != 0)
+        {
+            AlertMsg("H4→H1→M30→M15", currentSym, stH4H1M30M15);
+        }
+    }
 }
