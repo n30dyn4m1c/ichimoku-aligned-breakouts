@@ -1,6 +1,7 @@
 # 📈 Ichimoku Multi-Timeframe Alignment Alert
 
 **Author:** [n30dyn4m1c, Neo Malesa]
+
 **Development Assistance:** Code, Cleanup, and Documentation with the help of **ChatGPT** and **Gemini**.
 
 This MQL5 Expert Advisor (EA) is designed to scan a user-defined list of symbols for **full Ichimoku Kinko Hyo alignment** across multiple timeframes, issuing alerts and drawing a signal label on the chart when a high-probability alignment is found.
