@@ -1,10 +1,10 @@
-# 🚀 Ichimoku Multi-Timeframe Breakout Alert
+# 🚀 Ichimoku Multi-Timeframe Alignment Breakout Alert
 
 **Author:** n30dyn4m1c (Neo Malesa)
 
 **Development Assistance:** Code Cleanup and Documentation with the help of **ChatGPT** and **Gemini**.
 
-This MQL5 Expert Advisor (EA) is designed to scan a user-defined list of symbols for **full Ichimoku Kinko Hyo alignment** across multiple timeframes. This alignment signals a **high-probability trend breakout**, issuing alerts and drawing a signal label on the chart when a confirmed setup is found.
+This MQL5 Expert Advisor (EA) is designed to scan a list of symbols for **Ichimoku Kinko Hyo alignment** across multiple timeframes. This alignment signals a **high-probability trend breakout**, issuing alerts and drawing a signal label on the chart when a confirmed setup is found.
 
 ---
 
