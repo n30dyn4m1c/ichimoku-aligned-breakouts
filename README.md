@@ -1,62 +1,73 @@
-# 🚀 Ichimoku Multi-Timeframe Alignment Breakout Alert
+# ☁️ Ichimoku Multi-Timeframe Alignment Alerts (Customized & Independent)
 
-**Author:** n30dyn4m1c (Neo Malesa)
+This MQL5 indicator is designed for traders who utilize the Ichimoku Kinko Hyo system combined with multi-timeframe (MTF) analysis. It monitors a large list of symbols for alignment across specific, customized groups of timeframes, ensuring signals are generated only when a trend cascade is confirmed from high to low.
 
-**Development Assistance:** Code Cleanup and Documentation with the help of **ChatGPT** and **Gemini**.
+The core feature of this indicator is the use of **independent, time-triggered checks**, which run only when the lowest analyzed bar in a sequence closes. This guarantees signal precision while minimizing computational overhead.
 
-This MQL5 Expert Advisor (EA) is designed to scan a list of symbols for **Ichimoku Kinko Hyo alignment** across multiple timeframes. This alignment signals a **high-probability trend breakout**, issuing alerts and drawing a signal label on the chart when a confirmed setup is found.
+## 🌟 Key Features
 
----
+* **Customized Alignment Sequences:** Monitors three distinct trading horizons (Long, Medium, and Short-Term Swing).
+* **Independent Firing:** Each alignment check operates independently, triggered only by the closure of its most sensitive bar (**H4, M15, or M5**).
+* **Comprehensive Monitoring:** Checks a wide default list of 50+ Forex, Index, Metal, and Crypto symbols.
+* **Multi-Alerting:** Generates `Alert()` windows, sends `Print()` messages to the Experts tab, and transmits immediate **Push Notifications** to your mobile device.
+* **Visual Confirmation:** Draws a signal label on the chart of the current symbol when an alignment is found.
 
-## ✨ Key Features (Multi-Timeframe Breakout Confirmation)
+## ⚙️ Alignment Logic and Trigger Frequencies
 
-* **Multi-Symbol Scanning:** Monitors a wide, customizable list of symbols (currency pairs, metals, indices, etc.).
-* **Prioritized Alignment Checks:** Scans for full trend consistency across key timeframes (e.g., **H4 → M1**), prioritizing longer-term alignment for higher-quality **breakout** signals.
-* **Strict Ichimoku Rules:** Enforces the **full Ichimoku bullish/bearish condition** on every timeframe checked. This rigorous confirmation minimizes false **breakouts** by ensuring trend consistency from high to low timeframes.
-* **Visual Alerts:** Triggers a standard MQL5 `Alert()` box, prints the signal to the Experts tab, and draws a persistent text label on the current chart for immediate notification of a confirmed **breakout**.
+The indicator uses three separate, critical checks, each running at its own optimal frequency. This structure is designed to catch trends across multiple trading styles:
 
----
+| Alignment Check Sequence | Trading Horizon | Timeframes Checked | Trigger Frequency | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. MN → W → D → H4** | Long-Term Trend | Monthly to 4-Hour | **Every H4 Bar Close** | Confirms major structural trend. |
+| **2. H4 → H1 → M30 → M15** | Medium-Term Swing | 4-Hour to 15-Minute | **Every M15 Bar Close** | Confirms primary swing direction. |
+| **3. H1 → M30 → M15 → M5** | Short-Term Swing | 1-Hour to 5-Minute | **Every M5 Bar Close** | Identifies short-term entry momentum. |
 
-## 🛠️ Installation and Configuration
 
-### Parameters
 
-| Name | Default | Description |
+## 📝 Installation
+
+1.  Download the `.mq5` file.
+2.  Open your MetaTrader 5 (MT5) platform.
+3.  Go to `File` -> `Open Data Folder`.
+4.  Navigate to `MQL5` -> `Indicators`.
+5.  Place the `.mq5` file into the `Indicators` folder.
+6.  Close and reopen MT5, or right-click the `Indicators` folder in the Navigator window and select `Refresh`.
+7.  Attach the indicator to any chart.
+
+## 🛠️ Settings & Parameters
+
+The indicator is highly configurable via the **Inputs** tab:
+
+| Parameter | Default Value | Description |
 | :--- | :--- | :--- |
-| **Symbols** | (Long List) | Comma-separated list of symbols to monitor. **Must** be valid symbols on your broker's server. |
-| **Tenkan** | `9` | Tenkan-Sen period for Ichimoku (fastest line). |
-| **Kijun** | `26` | Kijun-Sen period for Ichimoku (base line). |
-| **SenkouB** | `52` | Senkou Span B period for Ichimoku (slower cloud boundary). |
+| `Symbols` | (50+ symbols) | **Comma-separated list** of all symbols you wish to monitor. Ensure they are available in your Market Watch. |
+| `Tenkan` | `9` | Ichimoku Tenkan-sen period. |
+| `Kijun` | `26` | Ichimoku Kijun-sen period. |
+| `SenkouB` | `52` | Ichimoku Senkou Span B period (Cloud B). |
 
----
+### Customizing Symbols
 
-## 🧠 Alignment Logic Explained (The Breakout Condition)
+To reduce lag or focus on specific pairs, you can modify the `Symbols` input. For example, to only monitor three key instruments: GOLD,US30Cash,BTCUSD
 
-The EA requires a **Fully Bullish** or **Fully Bearish** state on every single timeframe within a checked range for the alert to trigger. This full alignment validates that the short-term price movement is supported by the long-term trend, confirming a sustainable **breakout**.
+## 🚨 Alerting Mechanism
 
-### Full Ichimoku State (`CheckTF` Function)
+The indicator uses a robust alerting system to ensure you never miss a confirmed signal:
 
-A timeframe is considered fully aligned (e.g., Bullish) only if **all** primary Ichimoku relationships confirm the direction:
+1.  **`Alert()`:** A pop-up window appears on your MT5 terminal.
+2.  **`Print()`:** A detailed message is logged in the `Experts` tab of the terminal window.
+3.  **`SendNotification()`:** An instant push notification is sent to your registered MT5 mobile app.
+4.  **Visual Label:** A text label indicating the alignment (`Bullish` or `Bearish`) is drawn on the chart of the aligned symbol (if the chart is open).
 
-* **Price Position:** Price is **outside** and above the Kumo Cloud and above both the Tenkan-Sen and Kijun-Sen.
-* **Chikou Span Position:** The Chikou Span is **outside** and above the Kumo 52 bars back, and also above the Price, Tenkan-Sen, and Kijun-Sen 26 bars back.
+***
 
-### Priority Checks (`OnTick` Function)
+### 📚 Code Reference
 
-Checks are performed in a strict priority order. If a strong alignment is found, indicating a powerful **breakout**, all subsequent lower-priority checks are **skipped** for that symbol on the current M1 bar close.
+The core logic for range alignment is handled by the `AlignRange` function, which iterates through the specified timeframes and ensures the current bar meets the complete Ichimoku alignment criteria (Price, Tenkan, Kijun, and Chikou Span all on the correct side of the Kumo Cloud).
 
-| Priority | Alignment Check | Timeframes Checked (Highest → Lowest) | Purpose |
-| :---: | :--- | :--- | :--- |
-| **1 (Highest)** | **H4 → M1** | H4, H1, M30, M15, M5, M1 | Confirms a Major Trend **Breakout**. |
-| **2** | **H1 → M1** | H1, M30, M15, M5, M1 | Confirms a Mid-Term **Breakout**. |
-| **3** | **M30 → M1** | M30, M15, M5, M1 | Confirms a Short-Term **Breakout**. |
-| **4** | **D1 → M15** | D1, H4, H1, M30, M15 | Highest Timeframe Trend Validation. |
-| **5** | **H4 → M15** | H4, H1, M30, M15 | Mid-to-High Timeframe Trend Validation. |
-
----
-
-## 💻 Code Structure & Technical Notes
-
-* **Handle Management:** Indicator handles are stored in two-dimensional global arrays (`ich` for standard TFs and `ichHTF` for higher TFs) to efficiently manage multiple timeframes across multiple symbols.
-* **Time Control:** The `OnTick()` function uses the `lastM1bar` variable to ensure the complex alignment checks are performed only once per closed M1 bar, preventing excessive resource use and reducing alert spam.
-* **Functionality:** The `AlignRange()` and `Align_X_Y()` functions are responsible for iterating through the required timeframes and validating the consistent Ichimoku state using the `CheckTF()` function.
+```mql5
+// Example: H1 → M30 → M15 → M5 Alignment implementation
+int Align_H1_M5(int s)
+{
+    // Checks TFs[4] (H1) down to TFs[1] (M5)
+    return AlignRange(s, 4, 1); 
+}
