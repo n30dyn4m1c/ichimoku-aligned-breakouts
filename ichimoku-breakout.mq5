@@ -124,7 +124,6 @@ void AlertMsg(const string label, const string sym, const int st)
     string msg = sym + " | " + label + " | " + dir; 
     
     Alert(msg);
-    Print(msg);
     
     SendNotification(msg); 
     
