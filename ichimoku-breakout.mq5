@@ -121,7 +121,7 @@ void DrawSignalLabel(const string sym, const string label, const string dir)
 void AlertMsg(const string label, const string sym, const int st)
 {
     string dir = (st == 1 ? "Bullish" : "Bearish");
-    string msg = sym + " | " + label + " | " + dir; 
+    string msg = sym + "| " + label + " " + dir + "| CheckRisk"; 
     
     Alert(msg);
     
