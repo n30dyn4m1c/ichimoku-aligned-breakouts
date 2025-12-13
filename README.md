@@ -60,14 +60,3 @@ The indicator uses a robust alerting system to ensure you never miss a confirmed
 
 ***
 
-### 📚 Code Reference
-
-The core logic for range alignment is handled by the `AlignRange` function, which iterates through the specified timeframes and ensures the current bar meets the complete Ichimoku alignment criteria (Price, Tenkan, Kijun, and Chikou Span all on the correct side of the Kumo Cloud).
-
-```mql5
-// Example: H1 → M30 → M15 → M5 Alignment implementation
-int Align_H1_M5(int s)
-{
-    // Checks TFs[4] (H1) down to TFs[1] (M5)
-    return AlignRange(s, 4, 1); 
-}
