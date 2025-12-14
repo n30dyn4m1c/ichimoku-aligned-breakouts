@@ -58,5 +58,3 @@ The indicator uses a robust alerting system to ensure you never miss a confirmed
 3.  **`SendNotification()`:** An instant push notification is sent to your registered MT5 mobile app.
 4.  **Visual Label:** A text label indicating the alignment (`Bullish` or `Bearish`) is drawn on the chart of the aligned symbol (if the chart is open).
 
-***
-
