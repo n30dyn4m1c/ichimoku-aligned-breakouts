@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //| D1 Cloud + M15 Full Alignment EA                                  |
 //| Entry: D1 price above/below cloud + M15 full Ichimoku alignment  |
-//| Exit: M15 price closes beyond Kijun against position             |
+//| Exit: Trailing Kijun — M5 when losing, H1 when winning           |
 //| Author: Neo Malesa                                                |
 //+------------------------------------------------------------------+
 #property strict
@@ -24,14 +24,18 @@ input int    MinCloudPts = 0;     // Minimum D1 cloud thickness in points (0=dis
 
 int      ichD1[MAX_SYMS];     // D1 Ichimoku handle
 int      ichM15[MAX_SYMS];    // M15 Ichimoku handle
+int      ichM5[MAX_SYMS];     // M5 Ichimoku handle (tight exit)
+int      ichH1[MAX_SYMS];     // H1 Ichimoku handle (loose exit)
 int      adxD1[MAX_SYMS];     // D1 ADX handle
 string   syms[MAX_SYMS];
 int      symsCount = 0;
-datetime lastM15bar = 0;
+datetime lastM5bar = 0;
 int      MAGIC = 20260315;
 
 // 0=no position, 1=long, -1=short
 int      activeState[MAX_SYMS];
+// Entry price per symbol (to determine profit/loss)
+double   entryPrice[MAX_SYMS];
 
 CTrade   trade;
 
@@ -63,12 +67,19 @@ int OnInit()
    for(int s = 0; s < symsCount; s++)
    {
       activeState[s] = 0;
+      entryPrice[s]  = 0;
 
       ichD1[s] = iIchimoku(syms[s], PERIOD_D1, Tenkan, Kijun, SenkouB);
       if(ichD1[s] == INVALID_HANDLE) return(INIT_FAILED);
 
       ichM15[s] = iIchimoku(syms[s], PERIOD_M15, Tenkan, Kijun, SenkouB);
       if(ichM15[s] == INVALID_HANDLE) return(INIT_FAILED);
+
+      ichM5[s] = iIchimoku(syms[s], PERIOD_M5, Tenkan, Kijun, SenkouB);
+      if(ichM5[s] == INVALID_HANDLE) return(INIT_FAILED);
+
+      ichH1[s] = iIchimoku(syms[s], PERIOD_H1, Tenkan, Kijun, SenkouB);
+      if(ichH1[s] == INVALID_HANDLE) return(INIT_FAILED);
 
       adxD1[s] = iADX(syms[s], PERIOD_D1, ADXPeriod);
       if(adxD1[s] == INVALID_HANDLE) return(INIT_FAILED);
@@ -88,6 +99,8 @@ void OnDeinit(const int reason)
    {
       IndicatorRelease(ichD1[s]);
       IndicatorRelease(ichM15[s]);
+      IndicatorRelease(ichM5[s]);
+      IndicatorRelease(ichH1[s]);
       IndicatorRelease(adxD1[s]);
    }
 }
@@ -111,11 +124,14 @@ void SyncStateFromPositions()
 
       int dir = (type == POSITION_TYPE_BUY) ? 1 : -1;
 
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+
       for(int s = 0; s < symsCount; s++)
       {
          if(syms[s] == sym)
          {
             activeState[s] = dir;
+            entryPrice[s]  = openPrice;
             break;
          }
       }
@@ -236,14 +252,14 @@ int M15FullAlignment(string sym, int h)
 }
 
 //==============================================================
-// M15 Kijun Exit Check
+// Trailing Kijun Exit
 //==============================================================
 
-// Returns true if price closed on the wrong side of Kijun
-bool M15KijunBreak(string sym, int h, int direction)
+// Generic Kijun break check for any timeframe
+bool KijunBreak(string sym, ENUM_TIMEFRAMES tf, int h, int direction)
 {
    MqlRates rt[];
-   if(CopyRates(sym, PERIOD_M15, 0, 5, rt) <= 0) return false;
+   if(CopyRates(sym, tf, 0, 5, rt) <= 0) return false;
    ArraySetAsSeries(rt, true);
 
    double kij[1];
@@ -255,6 +271,15 @@ bool M15KijunBreak(string sym, int h, int direction)
    if(direction == -1 && closeP > kij[0]) return true;   // short, price above Kijun
 
    return false;
+}
+
+// Check if position is in profit
+bool IsInProfit(string sym, int direction, double openPrice)
+{
+   if(direction == 1)
+      return (SymbolInfoDouble(sym, SYMBOL_BID) > openPrice);
+   else
+      return (SymbolInfoDouble(sym, SYMBOL_ASK) < openPrice);
 }
 
 //==============================================================
@@ -293,26 +318,53 @@ void ClosePosition(string sym)
 
 void OnTick()
 {
-   // Trigger on M15 bar close
-   MqlRates m15[];
-   if(CopyRates(_Symbol, PERIOD_M15, 0, 2, m15) <= 0) return;
-   ArraySetAsSeries(m15, true);
-   if(m15[1].time == lastM15bar) return;
-   lastM15bar = m15[1].time;
+   // Trigger on M5 bar close (needed for tight M5 Kijun exit checks)
+   MqlRates m5[];
+   if(CopyRates(_Symbol, PERIOD_M5, 0, 2, m5) <= 0) return;
+   ArraySetAsSeries(m5, true);
+   if(m5[1].time == lastM5bar) return;
+   lastM5bar = m5[1].time;
 
    for(int s = 0; s < symsCount; s++)
    {
-      // --- Exit: M15 Kijun break ---
+      // --- Exit: Trailing Kijun ---
+      // Losing: M5 Kijun break (cut losses fast)
+      // Winning: H1 Kijun break (let profits run)
       if(activeState[s] != 0)
       {
-         if(M15KijunBreak(syms[s], ichM15[s], activeState[s]))
+         bool inProfit = IsInProfit(syms[s], activeState[s], entryPrice[s]);
+
+         bool shouldExit = false;
+         string exitReason = "";
+
+         if(!inProfit)
+         {
+            // Losing — tight stop: M5 Kijun
+            if(KijunBreak(syms[s], PERIOD_M5, ichM5[s], activeState[s]))
+            {
+               shouldExit = true;
+               exitReason = "M5 Kijun break - loss cut";
+            }
+         }
+         else
+         {
+            // Winning — loose stop: H1 Kijun
+            if(KijunBreak(syms[s], PERIOD_H1, ichH1[s], activeState[s]))
+            {
+               shouldExit = true;
+               exitReason = "H1 Kijun break - profit taken";
+            }
+         }
+
+         if(shouldExit)
          {
             string side = (activeState[s] == 1) ? "Long" : "Short";
-            string msg = PCTime() + " | Close " + syms[s] + " " + side + " (M15 Kijun break)";
+            string msg = PCTime() + " | Close " + syms[s] + " " + side + " (" + exitReason + ")";
             Print(msg); Alert(msg); SendNotification(msg);
 
             ClosePosition(syms[s]);
             activeState[s] = 0;
+            entryPrice[s]  = 0;
          }
       }
 
@@ -335,7 +387,11 @@ void OnTick()
          Print(msg); Alert(msg); SendNotification(msg);
 
          if(OpenPosition(syms[s], isBuy))
+         {
             activeState[s] = m15St;
+            entryPrice[s]  = isBuy ? SymbolInfoDouble(syms[s], SYMBOL_ASK)
+                                   : SymbolInfoDouble(syms[s], SYMBOL_BID);
+         }
       }
    }
 }
