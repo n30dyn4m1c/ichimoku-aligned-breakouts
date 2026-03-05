@@ -15,12 +15,16 @@ input int    Kijun     = 26;
 input int    SenkouB   = 52;
 input double Lots      = 0.10;
 input int    Slippage  = 30;
+input double MinADX    = 25.0;    // Minimum D1 ADX to confirm trend
+input int    ADXPeriod = 14;      // ADX period
+input int    MinCloudPts = 0;     // Minimum D1 cloud thickness in points (0=disabled)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 60
 
 int      ichD1[MAX_SYMS];     // D1 Ichimoku handle
 int      ichM15[MAX_SYMS];    // M15 Ichimoku handle
+int      adxD1[MAX_SYMS];     // D1 ADX handle
 string   syms[MAX_SYMS];
 int      symsCount = 0;
 datetime lastM15bar = 0;
@@ -65,6 +69,9 @@ int OnInit()
 
       ichM15[s] = iIchimoku(syms[s], PERIOD_M15, Tenkan, Kijun, SenkouB);
       if(ichM15[s] == INVALID_HANDLE) return(INIT_FAILED);
+
+      adxD1[s] = iADX(syms[s], PERIOD_D1, ADXPeriod);
+      if(adxD1[s] == INVALID_HANDLE) return(INIT_FAILED);
    }
 
    trade.SetDeviationInPoints(Slippage);
@@ -81,6 +88,7 @@ void OnDeinit(const int reason)
    {
       IndicatorRelease(ichD1[s]);
       IndicatorRelease(ichM15[s]);
+      IndicatorRelease(adxD1[s]);
    }
 }
 
@@ -130,17 +138,19 @@ string PCTime()
 }
 
 //==============================================================
-// D1 Cloud Bias (Relaxed — price vs cloud only)
+// D1 Trend Filters
 //==============================================================
 
+// D1 Cloud Bias (Relaxed — price vs cloud only)
+// Also checks cloud thickness if MinCloudPts > 0
 int D1CloudBias(string sym, int h)
 {
    MqlRates rt[];
    if(CopyRates(sym, PERIOD_D1, 0, 30, rt) <= 0) return 0;
    ArraySetAsSeries(rt, true);
 
-   int sh         = 1;        // last closed bar
-   int priceCloud = sh + 26;  // cloud projected 26 forward, so look 26 back
+   int sh         = 1;
+   int priceCloud = sh + 26;
 
    if(ArraySize(rt) <= priceCloud) return 0;
 
@@ -152,10 +162,26 @@ int D1CloudBias(string sym, int h)
    double cHi = MathMax(senA[0], senB[0]);
    double cLo = MathMin(senA[0], senB[0]);
 
-   if(closeP > cHi) return 1;   // bullish bias
-   if(closeP < cLo) return -1;  // bearish bias
+   // Cloud thickness filter
+   if(MinCloudPts > 0)
+   {
+      double pt = SymbolInfoDouble(sym, SYMBOL_POINT);
+      double thickness = (cHi - cLo) / pt;
+      if(thickness < MinCloudPts) return 0; // cloud too thin, choppy market
+   }
 
-   return 0; // price inside cloud — no bias
+   if(closeP > cHi) return 1;
+   if(closeP < cLo) return -1;
+
+   return 0;
+}
+
+// D1 ADX filter — returns true if market is trending
+bool D1IsTrending(string sym, int s)
+{
+   double adx[1];
+   if(CopyBuffer(adxD1[s], 0, 1, 1, adx) <= 0) return false;
+   return (adx[0] >= MinADX);
 }
 
 //==============================================================
@@ -290,11 +316,13 @@ void OnTick()
          }
       }
 
-      // --- Entry: D1 cloud bias + M15 full alignment ---
+      // --- Entry: D1 trending + D1 cloud bias + M15 full alignment ---
       if(activeState[s] == 0)
       {
+         if(!D1IsTrending(syms[s], s)) continue; // ADX too low, choppy market
+
          int d1Bias = D1CloudBias(syms[s], ichD1[s]);
-         if(d1Bias == 0) continue; // price inside D1 cloud, no trade
+         if(d1Bias == 0) continue; // price inside D1 cloud or cloud too thin
 
          int m15St = M15FullAlignment(syms[s], ichM15[s]);
          if(m15St == 0) continue; // M15 not fully aligned
