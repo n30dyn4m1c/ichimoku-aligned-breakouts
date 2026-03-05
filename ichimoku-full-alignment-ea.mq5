@@ -15,8 +15,6 @@ input int    SenkouB   = 52;
 input double FullLots  = 0.20;  // Lot size per position (Full MN-M1)
 input double H4Lots    = 0.10;  // Lot size per position (H4-M1)
 input double H1Lots    = 0.10;  // Lot size per position (H1-M1)
-input int    SL_Points = 300;   // Stop loss in points
-input int    TP_Points = 600;   // Take profit in points
 input int    Slippage  = 30;    // Max slippage in points
 
 //--- Constants and Global Variables ---
@@ -242,39 +240,24 @@ string TierLabel(const int tier)
 
 bool OpenPositions(string sym, bool isBuy, int tier)
 {
-   double pt     = SymbolInfoDouble(sym, SYMBOL_POINT);
-   double ask    = SymbolInfoDouble(sym, SYMBOL_ASK);
-   double bid    = SymbolInfoDouble(sym, SYMBOL_BID);
-   int    digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
-   double lots   = LotsForTier(tier);
-   int    count  = PositionsPerTier[tier];
-   int    magic  = MagicForTier(tier);
+   double ask   = SymbolInfoDouble(sym, SYMBOL_ASK);
+   double bid   = SymbolInfoDouble(sym, SYMBOL_BID);
+   double lots  = LotsForTier(tier);
+   int    count = PositionsPerTier[tier];
 
-   trade.SetExpertMagicNumber(magic);
-
-   double sl, tp;
-   if(isBuy)
-   {
-      sl = NormalizeDouble(ask - SL_Points * pt, digits);
-      tp = NormalizeDouble(ask + TP_Points * pt, digits);
-   }
-   else
-   {
-      sl = NormalizeDouble(bid + SL_Points * pt, digits);
-      tp = NormalizeDouble(bid - TP_Points * pt, digits);
-   }
+   trade.SetExpertMagicNumber(MagicForTier(tier));
 
    bool ok = true;
    for(int i = 0; i < count; i++)
    {
       if(isBuy)
       {
-         if(!trade.Buy(lots, sym, ask, sl, tp, TierLabel(tier)))
+         if(!trade.Buy(lots, sym, ask, 0, 0, TierLabel(tier)))
             ok = false;
       }
       else
       {
-         if(!trade.Sell(lots, sym, bid, sl, tp, TierLabel(tier)))
+         if(!trade.Sell(lots, sym, bid, 0, 0, TierLabel(tier)))
             ok = false;
       }
    }
@@ -298,22 +281,6 @@ void ClosePositions(string sym, int tier)
    }
 }
 
-bool HasPositions(string sym, int tier)
-{
-   int magic = MagicForTier(tier);
-
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      ulong ticket = PositionGetTicket(i);
-      if(!PositionSelectByTicket(ticket)) continue;
-
-      if(PositionGetString(POSITION_SYMBOL) == sym &&
-         (int)PositionGetInteger(POSITION_MAGIC) == magic)
-         return true;
-   }
-   return false;
-}
-
 //==============================================================
 // Main Loop
 //==============================================================
@@ -328,17 +295,6 @@ void OnTick()
 
    for(int s = 0; s < symsCount; s++)
    {
-      // --- Stale state cleanup ---
-      // If positions were closed by SL/TP, reset tierState so we can re-enter
-      for(int tier = 0; tier < TIER_COUNT; tier++)
-      {
-         if(tierState[s][tier] != 0 && !HasPositions(syms[s], tier))
-         {
-            Print(syms[s] + " " + TierLabel(tier) + " positions closed by SL/TP, resetting state");
-            tierState[s][tier] = 0;
-         }
-      }
-
       // --- Exit checks FIRST (per tier, based on specific TF break) ---
 
       for(int tier = 0; tier < TIER_COUNT; tier++)
