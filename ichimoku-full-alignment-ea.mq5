@@ -17,6 +17,7 @@ input double H4Lots    = 0.10;  // Lot size per position (H4-M1)
 input double H1Lots    = 0.10;  // Lot size per position (H1-M1)
 input int    SL_Points = 300;   // Stop loss in points
 input int    TP_Points = 600;   // Take profit in points
+input int    Slippage  = 30;    // Max slippage in points
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 10
@@ -87,6 +88,9 @@ int OnInit()
          if(ich[s][t] == INVALID_HANDLE) return(INIT_FAILED);
       }
    }
+
+   // Set slippage for order execution
+   trade.SetDeviationInPoints(Slippage);
 
    // Scan for existing positions on startup
    SyncStateFromPositions();
@@ -324,7 +328,40 @@ void OnTick()
 
    for(int s = 0; s < symsCount; s++)
    {
-      // --- Entry checks (each tier independent) ---
+      // --- Stale state cleanup ---
+      // If positions were closed by SL/TP, reset tierState so we can re-enter
+      for(int tier = 0; tier < TIER_COUNT; tier++)
+      {
+         if(tierState[s][tier] != 0 && !HasPositions(syms[s], tier))
+         {
+            Print(syms[s] + " " + TierLabel(tier) + " positions closed by SL/TP, resetting state");
+            tierState[s][tier] = 0;
+         }
+      }
+
+      // --- Exit checks FIRST (per tier, based on specific TF break) ---
+
+      for(int tier = 0; tier < TIER_COUNT; tier++)
+      {
+         if(tierState[s][tier] == 0) continue;
+
+         int exitIdx = ExitTFIndex[tier];
+         int exitSt  = CheckTF(syms[s], TFs[exitIdx], ich[s][exitIdx]);
+
+         // Exit if the exit TF broke (neutral or flipped)
+         if(exitSt != tierState[s][tier])
+         {
+            string side = (tierState[s][tier] == 1) ? "Long" : "Short";
+            string msg = "Close " + syms[s] + " " + side + " (" + TierLabel(tier) + " - " +
+                         EnumToString(TFs[exitIdx]) + " broke)";
+            Print(msg); Alert(msg); SendNotification(msg);
+
+            ClosePositions(syms[s], tier);
+            tierState[s][tier] = 0;
+         }
+      }
+
+      // --- Entry checks (exclusive tiers) ---
       // Only enter if no position exists for that tier on this symbol
 
       // Tier 0: Full MN-M1
@@ -372,28 +409,6 @@ void OnTick()
 
             if(OpenPositions(syms[s], isBuy, 2))
                tierState[s][2] = st;
-         }
-      }
-
-      // --- Exit checks (per tier, based on specific TF break) ---
-
-      for(int tier = 0; tier < TIER_COUNT; tier++)
-      {
-         if(tierState[s][tier] == 0) continue;
-
-         int exitIdx = ExitTFIndex[tier];
-         int exitSt  = CheckTF(syms[s], TFs[exitIdx], ich[s][exitIdx]);
-
-         // Exit if the exit TF broke (neutral or flipped)
-         if(exitSt != tierState[s][tier])
-         {
-            string side = (tierState[s][tier] == 1) ? "Long" : "Short";
-            string msg = "Close " + syms[s] + " " + side + " (" + TierLabel(tier) + " - " +
-                         EnumToString(TFs[exitIdx]) + " broke)";
-            Print(msg); Alert(msg); SendNotification(msg);
-
-            ClosePositions(syms[s], tier);
-            tierState[s][tier] = 0;
          }
       }
    }
