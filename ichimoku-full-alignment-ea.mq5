@@ -214,6 +214,21 @@ int AlignH4(const int s)   { return AlignRange(s, 3, 8); }
 int AlignH1(const int s)   { return AlignRange(s, 4, 8); }
 
 //==============================================================
+// Utility Functions
+//==============================================================
+
+string PCTime()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeLocal(), dt);
+   int h = dt.hour;
+   string ampm = (h >= 12) ? "PM" : "AM";
+   if(h == 0) h = 12;
+   else if(h > 12) h -= 12;
+   return IntegerToString(h) + ":" + StringFormat("%02d", dt.min) + " " + ampm;
+}
+
+//==============================================================
 // Trading Functions
 //==============================================================
 
@@ -308,7 +323,7 @@ void OnTick()
          if(exitSt != tierState[s][tier])
          {
             string side = (tierState[s][tier] == 1) ? "Long" : "Short";
-            string msg = "Close " + syms[s] + " " + side + " (" + TierLabel(tier) + " - " +
+            string msg = PCTime() + " | Close " + syms[s] + " " + side + " (" + TierLabel(tier) + " - " +
                          EnumToString(TFs[exitIdx]) + " broke)";
             Print(msg); Alert(msg); SendNotification(msg);
 
@@ -328,7 +343,7 @@ void OnTick()
          {
             bool isBuy = (st == 1);
             string action = isBuy ? "Buy" : "Sell";
-            string msg = action + " " + syms[s] + " x3 @ " + DoubleToString(LotsForTier(0), 2) + " (Full MN-M1)";
+            string msg = PCTime() + " | " + action + " " + syms[s] + " x3 @ " + DoubleToString(LotsForTier(0), 2) + " (Full MN-M1)";
             Print(msg); Alert(msg); SendNotification(msg);
 
             if(OpenPositions(syms[s], isBuy, 0))
@@ -344,7 +359,7 @@ void OnTick()
          {
             bool isBuy = (st == 1);
             string action = isBuy ? "Buy" : "Sell";
-            string msg = action + " " + syms[s] + " x3 @ " + DoubleToString(LotsForTier(1), 2) + " (H4-M1)";
+            string msg = PCTime() + " | " + action + " " + syms[s] + " x3 @ " + DoubleToString(LotsForTier(1), 2) + " (H4-M1)";
             Print(msg); Alert(msg); SendNotification(msg);
 
             if(OpenPositions(syms[s], isBuy, 1))
@@ -360,7 +375,7 @@ void OnTick()
          {
             bool isBuy = (st == 1);
             string action = isBuy ? "Buy" : "Sell";
-            string msg = action + " " + syms[s] + " x1 @ " + DoubleToString(LotsForTier(2), 2) + " (H1-M1)";
+            string msg = PCTime() + " | " + action + " " + syms[s] + " x1 @ " + DoubleToString(LotsForTier(2), 2) + " (H1-M1)";
             Print(msg); Alert(msg); SendNotification(msg);
 
             if(OpenPositions(syms[s], isBuy, 2))

@@ -79,13 +79,28 @@ void OnDeinit(const int reason)
 }
 
 //==============================================================
+// Utility Functions
+//==============================================================
+
+string PCTime()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeLocal(), dt);
+   int h = dt.hour;
+   string ampm = (h >= 12) ? "PM" : "AM";
+   if(h == 0) h = 12;
+   else if(h > 12) h -= 12;
+   return IntegerToString(h) + ":" + StringFormat("%02d", dt.min) + " " + ampm;
+}
+
+//==============================================================
 // Alerting Functions
 //==============================================================
 
 void AlertEntry(const string label, const string sym, const int st)
 {
    string action = (st == 1 ? "Buy" : "Sell");
-   string msg = action + " " + sym + " (" + label + ")";
+   string msg = PCTime() + " | " + action + " " + sym + " (" + label + ")";
 
    Alert(msg);
    Print(msg);
@@ -95,7 +110,7 @@ void AlertEntry(const string label, const string sym, const int st)
 void AlertExit(const string label, const string sym, const int prevState)
 {
    string side = (prevState == 1 ? "Long" : "Short");
-   string msg = "Close " + sym + " " + side + " (" + label + " broke)";
+   string msg = PCTime() + " | Close " + sym + " " + side + " (" + label + " broke)";
 
    Alert(msg);
    Print(msg);
