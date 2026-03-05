@@ -8,7 +8,7 @@
 #include <Trade/Trade.mqh>
 
 //--- Input Parameters ---
-input string Symbols   = "GOLD";
+input string Symbols   = "EURUSD,GBPUSD,USDJPY,USDCHF,USDCAD,AUDUSD,NZDUSD,EURGBP,EURJPY,EURCHF,EURCAD,EURAUD,EURNZD,GBPJPY,GBPCHF,GBPCAD,GBPAUD,GBPNZD,AUDJPY,AUDNZD,AUDCAD,AUDCHF,NZDJPY,NZDCAD,NZDCHF,CADJPY,CHFJPY,GOLD,XAUUSD,SILVER,XAGUSD,XAUJPY,XAUCNH,XAUEUR,XPDUSD,XPTUSD,BTCUSD,BTCEUR,BTCGBP,DOGEUSD,ETHBTC,LTCUSD,SHIBUSD,SOLUSD,XRPUSD,OILCash,BRENTCash,NGASCash,US30Cash,US500Cash,US100Cash";
 input int    Tenkan    = 9;
 input int    Kijun     = 26;
 input int    SenkouB   = 52;
@@ -18,7 +18,7 @@ input double H1Lots    = 0.10;  // Lot size per position (H1-M1)
 input int    Slippage  = 30;    // Max slippage in points
 
 //--- Constants and Global Variables ---
-#define MAX_SYMS 10
+#define MAX_SYMS 60
 #define TF_COUNT 9
 #define TIER_COUNT 3
 
