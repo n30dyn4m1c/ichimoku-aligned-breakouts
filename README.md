@@ -8,49 +8,104 @@ A collection of MQL5 indicators and Expert Advisors that use Ichimoku Kinko Hyo 
 | :--- | :--- | :--- |
 | `ichimoku-breakout.mq5` | Indicator | Independent cascade alerts (MN-H4, H4-M15, H1-M5) |
 | `ichimoku-full-alignment.mq5` | Indicator | Multi-tier alignment alerts with entry/exit tracking |
-| `ichimoku-full-alignment-ea.mq5` | Expert Advisor | Auto-trades based on multi-tier alignment |
-| `ichimoku-breakout-scalper.mq5` | Expert Advisor | D1-M1 alignment auto-trader |
+| `ichimoku-full-alignment-ea.mq5` | EA | Auto-trades based on multi-tier alignment (MN-M1, H4-M1, H1-M1) |
+| `ichimoku-full-alignment-ea-gold.mq5` | EA | Gold-only version of multi-tier alignment EA |
+| `ichimoku-breakout-scalper.mq5` | EA | D1-M1 alignment auto-trader |
+| `bottom-up-alignment-ea.mq5` | EA | Bottom-up M5+M1 alignment entry, M1 exit |
+| `bottom-up-alignment-ea-gold.mq5` | EA | Gold-only bottom-up alignment EA |
+| `d1-m15-alignment-ea.mq5` | EA | D1 cloud + M15 alignment with ADX filter, trailing Kijun exit |
+| `d1-m15-alignment-ea-gold.mq5` | EA | Gold-only D1+M15 alignment EA |
+| `pullback-breakout-ea.mq5` | EA | **Pullback breakout**: D1+H4 trend, M15 pullback re-alignment entry |
+| `pullback-breakout-ea-gold.mq5` | EA | Gold-only pullback breakout EA |
+| `pullback-scalp-ea.mq5` | EA | **Pullback scalp**: H1+M15 trend, M1 pullback re-alignment entry |
+| `pullback-scalp-ea-gold.mq5` | EA | Gold-only pullback scalp EA |
 
 ---
 
-## ichimoku-full-alignment.mq5 (Alert Indicator)
+## Pullback Breakout EA (Swing)
 
-Three-tier alignment alert system. Checks every M1 bar close across 51 symbols. Only the highest matching tier fires. Tracks active signals and alerts when alignment breaks.
+Enters after a pullback completes within an established higher-timeframe trend, avoiding overextended entries. Designed to capture the start of new impulse legs rather than chasing moves already in progress.
 
-### Entry Alerts
+### Strategy Logic
 
-| Tier | Timeframes | Conviction |
+1. **D1 trending** — ADX > 25, price above/below cloud, cloud thick enough
+2. **H4 fully aligned** — all 5 Ichimoku conditions confirm intermediate trend
+3. **M15 re-aligned** — M15 currently shows full alignment in same direction
+4. **Pullback occurred** — M15 lost alignment within last 10 bars (price pulled back)
+5. **Not overextended** — price within 1.5x ATR of H4 Kijun
+6. **Spread OK** — spread < 30% of H4 ATR
+
+### 3-Tier Trailing Exit
+
+| Condition | Exit Trigger | Purpose |
 | :--- | :--- | :--- |
-| Full MN-M1 | MN, W, D, H4, H1, M30, M15, M5, M1 (9 TFs) | Highest |
-| H4-M1 | H4, H1, M30, M15, M5, M1 (6 TFs) | High |
-| H1-M1 | H1, M30, M15, M5, M1 (5 TFs) | Medium |
+| Losing (< 0 ATR) | M5 Kijun break | Cut losses fast |
+| Small profit (0–1 ATR) | M15 Kijun break | Protect small gains |
+| Large profit (> 1 ATR) | H1 Kijun break | Let profits run |
+| H4 reversal | Immediate close | Structural safety net |
 
-### Exit Alerts
+### Risk Management
 
-Fires when alignment breaks. Tracks tier upgrades (H1 to H4) and downgrades (H4 to H1).
+- **Cooldown**: 60 minutes after a losing exit before re-entry on that symbol
+- **Max positions**: 8 simultaneous (configurable)
+- **Spread filter**: Skips entry during wide spreads
 
-### Alert Format
+### Parameters
 
-```
-2:31 AM | Buy GOLD (Full MN-M1)
-10:45 PM | Close GOLD Long (H4-M1 broke)
-```
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `MinADX` | 25.0 | Minimum D1 ADX for trend confirmation |
+| `MinCloudPts` | 0 | Minimum D1 cloud thickness in points (0=disabled) |
+| `PullbackBars` | 10 | M15 bars to look back for lost alignment |
+| `MaxKijunATR` | 1.5 | Max distance from H4 Kijun in ATR multiples |
+| `CooldownMins` | 60 | Minutes to wait after losing exit |
+| `MaxSpreadATR` | 0.3 | Max spread as fraction of H4 ATR (0=disabled) |
+| `MaxPositions` | 8 | Max simultaneous positions (0=unlimited) |
 
 ---
 
-## ichimoku-full-alignment-ea.mq5 (Trading EA)
+## Pullback Scalp EA
 
-Automatically opens and closes trades based on multi-tier alignment. No SL/TP — positions close only when alignment breaks.
+Same pullback breakout logic shifted to lower timeframes for intraday scalping.
+
+### Timeframe Mapping
+
+| Role | Swing | Scalp |
+| :--- | :--- | :--- |
+| Trend filter | D1 cloud + ADX | H1 cloud + ADX |
+| Intermediate | H4 full alignment | M15 full alignment |
+| Entry trigger | M15 pullback re-alignment | M1 pullback re-alignment |
+| Hard exit | H4 reversal | M15 reversal |
+| Exit (losing) | M5 Kijun | M1 Kijun |
+| Exit (small profit) | M15 Kijun | M5 Kijun |
+| Exit (large profit) | H1 Kijun | M15 Kijun |
+| ATR reference | H4 | M15 |
+
+### Key Differences from Swing
+
+- Triggers on **M1 bar close** (vs M5)
+- **15-minute cooldown** after losses (vs 60)
+- **15 M1 bars** pullback lookback (vs 10 M15 bars)
+
+---
+
+## D1 + M15 Alignment EA
+
+Entry: D1 price above/below cloud + D1 ADX trending + M15 full Ichimoku alignment. Exit: Trailing Kijun — M5 when losing, H1 when winning.
+
+---
+
+## Multi-Tier Alignment EA
+
+Three-tier system trading MN-M1, H4-M1, and H1-M1 alignment cascades with tier-specific exits and position sizing.
 
 ### Entry Rules
 
-| Tier | Alignment Required | Positions | Lot Size | Total |
-| :--- | :--- | :--- | :--- | :--- |
-| Full MN-M1 | 9 TFs all agree | 3 | 0.20 | 0.60 |
-| H4-M1 | 6 TFs all agree | 3 | 0.10 | 0.30 |
-| H1-M1 | 5 TFs all agree | 1 | 0.10 | 0.10 |
-
-Tiers are exclusive — only the highest matching tier opens trades.
+| Tier | Alignment Required | Positions | Lot Size |
+| :--- | :--- | :--- | :--- |
+| Full MN-M1 | 9 TFs all agree | 3 | 0.20 |
+| H4-M1 | 6 TFs all agree | 3 | 0.10 |
+| H1-M1 | 5 TFs all agree | 1 | 0.10 |
 
 ### Exit Rules
 
@@ -60,42 +115,11 @@ Tiers are exclusive — only the highest matching tier opens trades.
 | H4-M1 | M5 breaks alignment |
 | H1-M1 | M1 breaks alignment |
 
-### Features
-
-- Restart recovery via magic numbers (syncs state from open positions)
-- Configurable slippage (default 30 points)
-- 12-hour PC time on all alerts
-
-### Parameters
-
-| Parameter | Default | Description |
-| :--- | :--- | :--- |
-| `Symbols` | 51 symbols | Comma-separated symbol list |
-| `Tenkan` | 9 | Tenkan-sen period |
-| `Kijun` | 26 | Kijun-sen period |
-| `SenkouB` | 52 | Senkou Span B period |
-| `FullLots` | 0.20 | Lot size per position (Full tier) |
-| `H4Lots` | 0.10 | Lot size per position (H4 tier) |
-| `H1Lots` | 0.10 | Lot size per position (H1 tier) |
-| `Slippage` | 30 | Max slippage in points |
-
 ---
 
-## ichimoku-breakout.mq5 (Original Alert Indicator)
+## Bottom-Up Alignment EA
 
-Three independent cascades, each triggered at its own frequency:
-
-| Cascade | Timeframes | Trigger |
-| :--- | :--- | :--- |
-| MN → W → D → H4 | Monthly to 4-Hour | Every H4 bar close |
-| H4 → H1 → M30 → M15 | 4-Hour to 15-Minute | Every M15 bar close |
-| H1 → M30 → M15 → M5 | 1-Hour to 5-Minute | Every M5 bar close |
-
----
-
-## ichimoku-breakout-scalper.mq5 (Original Trading EA)
-
-D1 → H4 → H1 → M15 → M5 → M1 alignment auto-trader. Triggers on M1 bar close. Uses M15 Kijun for SL placement with fixed TP.
+Entry: M1 and M5 both fully aligned. Exit: M1 breaks alignment. Fastest-reacting strategy — enters and exits on the lowest timeframes.
 
 ---
 
