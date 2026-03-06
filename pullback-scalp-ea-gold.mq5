@@ -25,6 +25,7 @@ input int    ATRPeriod    = 14;       // ATR period for overextension check
 input int    CooldownMins = 15;       // Minutes to wait after a losing exit before re-entry
 input double MaxSpreadATR = 0.3;      // Max spread as fraction of M15 ATR (0=disabled)
 input int    MaxPositions = 3;        // Max simultaneous positions (0=unlimited)
+input int    ReentryMins  = 30;       // Minutes after exit to allow continuation re-entry (0=disabled)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 10
@@ -43,6 +44,8 @@ int      MAGIC = 20260323;
 int      activeState[MAX_SYMS];
 double   entryPrice[MAX_SYMS];
 datetime cooldownUntil[MAX_SYMS];
+int      lastExitDir[MAX_SYMS];
+datetime lastExitTime[MAX_SYMS];
 int      activeCount = 0;
 
 CTrade   trade;
@@ -77,6 +80,8 @@ int OnInit()
       activeState[s]   = 0;
       entryPrice[s]    = 0;
       cooldownUntil[s] = 0;
+      lastExitDir[s]   = 0;
+      lastExitTime[s]  = 0;
 
       ichH1[s]  = iIchimoku(syms[s], PERIOD_H1,  Tenkan, Kijun, SenkouB);
       ichM15[s] = iIchimoku(syms[s], PERIOD_M15, Tenkan, Kijun, SenkouB);
@@ -508,6 +513,9 @@ void OnTick()
             string msg = PCTime() + " | Close " + syms[s] + " " + side + " (" + exitReason + ")";
             Print(msg); Alert(msg); SendNotification(msg);
 
+            lastExitDir[s]  = activeState[s];
+            lastExitTime[s] = TimeCurrent();
+
             ClosePosition(syms[s]);
             activeState[s] = 0;
             entryPrice[s]  = 0;
@@ -522,12 +530,31 @@ void OnTick()
       if(activeState[s] != 0) continue;
 
       if(MaxPositions > 0 && activeCount >= MaxPositions) continue;
-      if(cooldownUntil[s] > TimeCurrent()) continue;
+
+      bool isContinuation = false;
+      if(ReentryMins > 0 && lastExitDir[s] != 0 && lastExitTime[s] > 0)
+      {
+         datetime reentryDeadline = lastExitTime[s] + ReentryMins * 60;
+         if(TimeCurrent() <= reentryDeadline)
+            isContinuation = true;
+         else
+         {
+            lastExitDir[s]  = 0;
+            lastExitTime[s] = 0;
+         }
+      }
+
+      if(!isContinuation && cooldownUntil[s] > TimeCurrent()) continue;
 
       if(!H1IsTrending(syms[s], s)) continue;
 
       int h1Bias = H1CloudBias(syms[s], ichH1[s]);
       if(h1Bias == 0) continue;
+
+      if(isContinuation && h1Bias != lastExitDir[s])
+         isContinuation = false;
+
+      if(!isContinuation && cooldownUntil[s] > TimeCurrent()) continue;
 
       int m15St = FullAlignment(syms[s], PERIOD_M15, ichM15[s]);
       if(m15St == 0 || m15St != h1Bias) continue;
@@ -535,7 +562,10 @@ void OnTick()
       int m1St = FullAlignment(syms[s], PERIOD_M1, ichM1[s]);
       if(m1St == 0 || m1St != h1Bias) continue;
 
-      if(!M1HadPullback(syms[s], ichM1[s], h1Bias)) continue;
+      if(!isContinuation)
+      {
+         if(!M1HadPullback(syms[s], ichM1[s], h1Bias)) continue;
+      }
 
       if(IsOverextended(syms[s], s, h1Bias)) continue;
 
@@ -543,7 +573,8 @@ void OnTick()
 
       bool isBuy = (h1Bias == 1);
       string action = isBuy ? "Buy" : "Sell";
-      string msg = PCTime() + " | " + action + " " + syms[s] + " @ " + DoubleToString(Lots, 2) + " (Pullback Scalp)";
+      string label = isContinuation ? "Continuation" : "Pullback Scalp";
+      string msg = PCTime() + " | " + action + " " + syms[s] + " @ " + DoubleToString(Lots, 2) + " (" + label + ")";
       Print(msg); Alert(msg); SendNotification(msg);
 
       if(OpenPosition(syms[s], isBuy))
@@ -552,6 +583,8 @@ void OnTick()
          entryPrice[s]  = isBuy ? SymbolInfoDouble(syms[s], SYMBOL_ASK)
                                 : SymbolInfoDouble(syms[s], SYMBOL_BID);
          activeCount++;
+         lastExitDir[s]  = 0;
+         lastExitTime[s] = 0;
       }
    }
 }

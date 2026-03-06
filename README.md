@@ -44,9 +44,14 @@ Enters after a pullback completes within an established higher-timeframe trend, 
 | Large profit (> 1 ATR) | H1 Kijun break | Let profits run |
 | H4 reversal | Immediate close | Structural safety net |
 
+### Continuation Re-entry
+
+After a Kijun break exit, the move often resumes in the same direction. If the same direction re-aligns within the re-entry window (`ReentryMins`), the EA re-enters without requiring a pullback — the exit itself was the pullback. This also overrides the loss cooldown for same-direction entries. Alerts show "(Continuation)" to distinguish from fresh entries.
+
 ### Risk Management
 
-- **Cooldown**: 60 minutes after a losing exit before re-entry on that symbol
+- **Cooldown**: 60 minutes after a losing exit before re-entry (overridden by continuation)
+- **Continuation window**: 120 minutes to re-enter same direction after exit (swing), 30 minutes (scalp)
 - **Max positions**: 8 simultaneous (configurable)
 - **Spread filter**: Skips entry during wide spreads
 
@@ -61,6 +66,7 @@ Enters after a pullback completes within an established higher-timeframe trend, 
 | `CooldownMins` | 60 | Minutes to wait after losing exit |
 | `MaxSpreadATR` | 0.3 | Max spread as fraction of H4 ATR (0=disabled) |
 | `MaxPositions` | 8 | Max simultaneous positions (0=unlimited) |
+| `ReentryMins` | 120 | Minutes after exit to allow continuation re-entry (0=disabled) |
 
 ---
 
@@ -86,6 +92,7 @@ Same pullback breakout logic shifted to lower timeframes for intraday scalping.
 - Triggers on **M1 bar close** (vs M5)
 - **15-minute cooldown** after losses (vs 60)
 - **15 M1 bars** pullback lookback (vs 10 M15 bars)
+- **30-minute continuation window** (vs 120)
 
 ---
 

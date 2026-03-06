@@ -25,6 +25,7 @@ input int    ATRPeriod    = 14;       // ATR period for overextension check
 input int    CooldownMins = 60;       // Minutes to wait after a losing exit before re-entry
 input double MaxSpreadATR = 0.3;      // Max spread as fraction of H4 ATR (0=disabled)
 input int    MaxPositions = 8;        // Max simultaneous positions (0=unlimited)
+input int    ReentryMins  = 120;      // Minutes after exit to allow continuation re-entry (0=disabled)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 60
@@ -47,6 +48,10 @@ double   entryPrice[MAX_SYMS];
 
 // Cooldown: timestamp when re-entry is allowed after a losing exit
 datetime cooldownUntil[MAX_SYMS];
+
+// Continuation re-entry: last exit direction and time
+int      lastExitDir[MAX_SYMS];
+datetime lastExitTime[MAX_SYMS];
 
 // Count of currently active positions
 int      activeCount = 0;
@@ -83,6 +88,8 @@ int OnInit()
       activeState[s]   = 0;
       entryPrice[s]    = 0;
       cooldownUntil[s] = 0;
+      lastExitDir[s]   = 0;
+      lastExitTime[s]  = 0;
 
       ichD1[s]  = iIchimoku(syms[s], PERIOD_D1,  Tenkan, Kijun, SenkouB);
       ichH4[s]  = iIchimoku(syms[s], PERIOD_H4,  Tenkan, Kijun, SenkouB);
@@ -574,12 +581,16 @@ void OnTick()
             string msg = PCTime() + " | Close " + syms[s] + " " + side + " (" + exitReason + ")";
             Print(msg); Alert(msg); SendNotification(msg);
 
+            // Record exit for continuation re-entry
+            lastExitDir[s]  = activeState[s];
+            lastExitTime[s] = TimeCurrent();
+
             ClosePosition(syms[s]);
             activeState[s] = 0;
             entryPrice[s]  = 0;
             activeCount--;
 
-            // Set cooldown after losing exits
+            // Set cooldown after losing exits (continuation re-entry can override)
             if(wasLoss)
                cooldownUntil[s] = TimeCurrent() + CooldownMins * 60;
          }
@@ -591,8 +602,23 @@ void OnTick()
       // Max positions cap
       if(MaxPositions > 0 && activeCount >= MaxPositions) continue;
 
-      // Cooldown after losing exit
-      if(cooldownUntil[s] > TimeCurrent()) continue;
+      // Check if this is a continuation re-entry (same direction, within window)
+      bool isContinuation = false;
+      if(ReentryMins > 0 && lastExitDir[s] != 0 && lastExitTime[s] > 0)
+      {
+         datetime reentryDeadline = lastExitTime[s] + ReentryMins * 60;
+         if(TimeCurrent() <= reentryDeadline)
+            isContinuation = true;
+         else
+         {
+            // Window expired — clear continuation state
+            lastExitDir[s]  = 0;
+            lastExitTime[s] = 0;
+         }
+      }
+
+      // Cooldown after losing exit (skipped for continuation re-entry in same direction)
+      if(!isContinuation && cooldownUntil[s] > TimeCurrent()) continue;
 
       // Step 1: D1 must be trending
       if(!D1IsTrending(syms[s], s)) continue;
@@ -600,6 +626,13 @@ void OnTick()
       // Step 2: D1 cloud bias
       int d1Bias = D1CloudBias(syms[s], ichD1[s]);
       if(d1Bias == 0) continue;
+
+      // Continuation only valid if same direction as last exit
+      if(isContinuation && d1Bias != lastExitDir[s])
+         isContinuation = false;
+
+      // Non-continuation entries still need cooldown check
+      if(!isContinuation && cooldownUntil[s] > TimeCurrent()) continue;
 
       // Step 3: H4 full alignment must agree with D1
       int h4St = H4FullAlignment(syms[s], ichH4[s]);
@@ -609,8 +642,11 @@ void OnTick()
       int m15St = M15FullAlignment(syms[s], ichM15[s]);
       if(m15St == 0 || m15St != d1Bias) continue;
 
-      // Step 5: M15 must have lost alignment within recent bars (pullback happened)
-      if(!M15HadPullback(syms[s], ichM15[s], d1Bias)) continue;
+      // Step 5: M15 pullback — waived for continuation re-entry
+      if(!isContinuation)
+      {
+         if(!M15HadPullback(syms[s], ichM15[s], d1Bias)) continue;
+      }
 
       // Step 6: Not overextended from H4 Kijun
       if(IsOverextended(syms[s], s, d1Bias)) continue;
@@ -621,7 +657,8 @@ void OnTick()
       // All conditions met — enter
       bool isBuy = (d1Bias == 1);
       string action = isBuy ? "Buy" : "Sell";
-      string msg = PCTime() + " | " + action + " " + syms[s] + " @ " + DoubleToString(Lots, 2) + " (Pullback Breakout)";
+      string label = isContinuation ? "Continuation" : "Pullback Breakout";
+      string msg = PCTime() + " | " + action + " " + syms[s] + " @ " + DoubleToString(Lots, 2) + " (" + label + ")";
       Print(msg); Alert(msg); SendNotification(msg);
 
       if(OpenPosition(syms[s], isBuy))
@@ -630,6 +667,10 @@ void OnTick()
          entryPrice[s]  = isBuy ? SymbolInfoDouble(syms[s], SYMBOL_ASK)
                                 : SymbolInfoDouble(syms[s], SYMBOL_BID);
          activeCount++;
+
+         // Clear continuation state after re-entry
+         lastExitDir[s]  = 0;
+         lastExitTime[s] = 0;
       }
    }
 }
