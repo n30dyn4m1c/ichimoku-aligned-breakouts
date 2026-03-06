@@ -132,6 +132,8 @@ For each timeframe, **all conditions must be true** for a bullish signal (bearis
 
 Every timeframe in the cascade must agree on direction (all bullish or all bearish). If any single timeframe is neutral or conflicts, no signal fires.
 
+---
+
 ## Installation
 
 ### Indicators
@@ -153,6 +155,10 @@ GOLD,BTCUSD,US30Cash
 ```
 
 Symbols not available in your Market Watch are automatically skipped.
+
+## Gold Variants
+
+Each EA has a `-gold` variant with a narrower default symbol list targeting Gold pairs. The logic is identical — only the `Symbols` default and `MaxPositions` (where applicable) differ. Use the Gold variants if you only want to trade Gold or want a lighter resource footprint.
 
 ## Alerting
 
