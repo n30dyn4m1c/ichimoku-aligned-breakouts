@@ -274,48 +274,77 @@ bool M1HadPullback(string sym, int h, int dir)
    if(CopyRates(sym, PERIOD_M1, 0, 120, rt) <= 0) return false;
    ArraySetAsSeries(rt, true);
 
-   for(int bar = 2; bar <= PullbackBars + 1; bar++)
+   int startBar = 2;
+   int endBar   = PullbackBars + 1;
+   int count    = endBar - startBar + 1;
+
+   int pcStart  = startBar + 26;    // price-cloud shift range start
+   int pcCount  = count;
+   int chStart  = startBar + 26;    // chikou shift range start
+   int chCount  = count;
+   int ccStart  = startBar + 52;    // chikou-cloud shift range start
+   int ccCount  = count;
+
+   if(ArraySize(rt) <= (int)(endBar + 52)) return false;
+
+   // Batch copy: price-bar buffers (tenkan/kijun at bar)
+   // ArraySetAsSeries so index 0 = lowest shift (startBar), matching idx = bar - startBar
+   double ten[], kij[];
+   if(CopyBuffer(h, 0, startBar, count, ten) < count) return false;
+   if(CopyBuffer(h, 1, startBar, count, kij) < count) return false;
+   ArraySetAsSeries(ten, true);
+   ArraySetAsSeries(kij, true);
+
+   // Batch copy: cloud at price (senkou A/B shifted +26)
+   double senA[], senB[];
+   if(CopyBuffer(h, 2, pcStart, pcCount, senA) < pcCount) return false;
+   if(CopyBuffer(h, 3, pcStart, pcCount, senB) < pcCount) return false;
+   ArraySetAsSeries(senA, true);
+   ArraySetAsSeries(senB, true);
+
+   // Batch copy: chikou span at chikou shift (+26)
+   double chik[];
+   if(CopyBuffer(h, 4, chStart, chCount, chik) < chCount) return false;
+   ArraySetAsSeries(chik, true);
+
+   // Batch copy: tenkan/kijun at chikou shift (+26)
+   double ten_ch[], kij_ch[];
+   if(CopyBuffer(h, 0, chStart, chCount, ten_ch) < chCount) return false;
+   if(CopyBuffer(h, 1, chStart, chCount, kij_ch) < chCount) return false;
+   ArraySetAsSeries(ten_ch, true);
+   ArraySetAsSeries(kij_ch, true);
+
+   // Batch copy: cloud at chikou-cloud shift (+52)
+   double senA_ch[], senB_ch[];
+   if(CopyBuffer(h, 2, ccStart, ccCount, senA_ch) < ccCount) return false;
+   if(CopyBuffer(h, 3, ccStart, ccCount, senB_ch) < ccCount) return false;
+   ArraySetAsSeries(senA_ch, true);
+   ArraySetAsSeries(senB_ch, true);
+
+   for(int bar = startBar; bar <= endBar; bar++)
    {
-      int priceCloud = bar + 26;
-      int chShift    = bar + 26;
-      int chCloud    = bar + 52;
-
-      if(ArraySize(rt) <= chCloud) continue;
-
-      double ten[1], kij[1], senA[1], senB[1], chik[1];
-      double ten_ch[1], kij_ch[1], senA_ch[1], senB_ch[1];
-
-      if(CopyBuffer(h, 0, bar, 1, ten) <= 0) continue;
-      if(CopyBuffer(h, 1, bar, 1, kij) <= 0) continue;
-      if(CopyBuffer(h, 2, priceCloud, 1, senA) <= 0) continue;
-      if(CopyBuffer(h, 3, priceCloud, 1, senB) <= 0) continue;
-
-      if(CopyBuffer(h, 4, chShift, 1, chik) <= 0) continue;
-      if(CopyBuffer(h, 0, chShift, 1, ten_ch) <= 0) continue;
-      if(CopyBuffer(h, 1, chShift, 1, kij_ch) <= 0) continue;
-      if(CopyBuffer(h, 2, chCloud, 1, senA_ch) <= 0) continue;
-      if(CopyBuffer(h, 3, chCloud, 1, senB_ch) <= 0) continue;
+      int idx = bar - startBar;
 
       double closeP   = rt[bar].close;
-      double price_26 = rt[chShift].close;
+      double price_26 = rt[bar + 26].close;
 
-      double cHi  = MathMax(senA[0], senB[0]);
-      double cLo  = MathMin(senA[0], senB[0]);
-      double cHiC = MathMax(senA_ch[0], senB_ch[0]);
-      double cLoC = MathMin(senA_ch[0], senB_ch[0]);
+      double cHi  = MathMax(senA[idx], senB[idx]);
+      double cLo  = MathMin(senA[idx], senB[idx]);
+      double cHiC = MathMax(senA_ch[idx], senB_ch[idx]);
+      double cLoC = MathMin(senA_ch[idx], senB_ch[idx]);
 
       bool aligned = false;
 
       if(dir == 1)
       {
-         bool priceAbove = (closeP > cHi && closeP > ten[0] && closeP > kij[0]);
-         bool chAbove = (chik[0] > cHiC && chik[0] > ten_ch[0] && chik[0] > kij_ch[0] && chik[0] > price_26);
+         bool priceAbove = (closeP > cHi && closeP > ten[idx] && closeP > kij[idx]);
+         bool chAbove = (chik[idx] > cHiC && chik[idx] > ten_ch[idx] && chik[idx] > kij_ch[idx] && chik[idx] > price_26);
          aligned = (priceAbove && chAbove);
       }
       else
       {
-         bool priceBelow = (closeP < cLo && closeP < ten[0] && closeP < kij[0]);
-         bool chBelow = (chik[0] < cLoC && chik[0] < ten_ch[0] && chik[0] < kij_ch[0] && chik[0] < price_26);
+         bool priceBelow = (closeP < cLo && closeP < ten[idx] && closeP < kij[idx]);
+         bool chBelow = (chik[idx] < cLoC && chik[idx] < ten_ch[idx] && chik[idx] < kij_ch[idx] && chik[idx] < price_26);
          aligned = (priceBelow && chBelow);
       }
 
@@ -453,7 +482,7 @@ void ClosePosition(string sym)
 void OnTick()
 {
    MqlRates m1[];
-   if(CopyRates(_Symbol, PERIOD_M1, 0, 2, m1) <= 0) return;
+   if(CopyRates(syms[0], PERIOD_M1, 0, 2, m1) <= 0) return;
    ArraySetAsSeries(m1, true);
    if(m1[1].time == lastM1bar) return;
    lastM1bar = m1[1].time;
@@ -517,7 +546,7 @@ void OnTick()
             ClosePosition(syms[s]);
             activeState[s] = 0;
             entryPrice[s]  = 0;
-            activeCount--;
+            if(activeCount > 0) activeCount--;
 
             if(wasLoss)
                cooldownUntil[s] = TimeCurrent() + CooldownMins * 60;
