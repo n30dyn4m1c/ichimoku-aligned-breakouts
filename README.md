@@ -73,7 +73,15 @@ After a Kijun break exit, the move often resumes in the same direction. If the s
 
 ## Pullback Scalp EA
 
-Same pullback breakout logic shifted to lower timeframes for intraday scalping.
+Enters on M15 tenkan-kijun cross within an established H1 trend, confirmed by full M15 Ichimoku alignment. No M1 involvement — eliminates low-timeframe noise that caused excessive churn.
+
+### Strategy Logic
+
+1. **H1 trending** — ADX > 25, price above/below cloud
+2. **M15 fully aligned** — all 5 Ichimoku conditions confirm intermediate trend
+3. **M15 TK cross** — tenkan crossed kijun in trend direction within last 3 bars
+4. **Not overextended** — price within 1.5× ATR of M15 Kijun
+5. **Spread OK** — spread < 30% of M15 ATR
 
 ### Timeframe Mapping
 
@@ -81,13 +89,14 @@ Same pullback breakout logic shifted to lower timeframes for intraday scalping.
 | :--- | :--- | :--- |
 | Trend filter | D1 cloud + ADX | H1 cloud + ADX |
 | Intermediate | H4 full alignment | M15 full alignment |
-| Entry trigger | M15 pullback re-alignment | M1 pullback re-alignment |
+| Entry trigger | M15 pullback re-alignment | M15 TK cross |
+| Tick trigger | M5 bar close | M5 bar close |
 | Hard exit | H4 reversal | M15 reversal |
 | Hard stop | — | 1.5× M15 ATR max loss |
-| Exit (deep loss) | M5 Kijun | M1 Kijun (< -0.5 ATR) |
+| Exit (deep loss) | M5 Kijun | M5 Kijun (< -0.5 ATR) |
 | Grace zone | — | No trailing exit (-0.5 to +0.3 ATR) |
-| Exit (small profit) | M15 Kijun | M5 Kijun (0.3–1.0 ATR) |
-| Exit (large profit) | H1 Kijun | M15 Kijun (> 1.0 ATR) |
+| Exit (small profit) | M15 Kijun | M15 Kijun (0.3–1.0 ATR) |
+| Exit (large profit) | H1 Kijun | H1 Kijun (> 1.0 ATR) |
 | ATR reference | H4 | M15 |
 
 ### 5-Tier Exit System
@@ -95,17 +104,18 @@ Same pullback breakout logic shifted to lower timeframes for intraday scalping.
 | Profit (ATR) | Exit Trigger | Purpose |
 | :--- | :--- | :--- |
 | ≤ -1.5 | Immediate close | Hard stop — cap max loss |
-| -1.5 to -0.5 | M1 Kijun break | Cut deep losses |
+| -1.5 to -0.5 | M5 Kijun break | Cut deep losses |
 | -0.5 to +0.3 | None (grace zone) | Let trade survive initial noise/spread |
-| +0.3 to +1.0 | M5 Kijun break | Protect small gains |
-| > +1.0 | M15 Kijun break | Let profits run |
+| +0.3 to +1.0 | M15 Kijun break | Protect small gains |
+| > +1.0 | H1 Kijun break | Let profits run |
 | M15 reversal | Immediate close | Structural safety net (any profit level) |
 
 ### Key Differences from Swing
 
-- Triggers on **M1 bar close** (vs M5)
-- **60-minute cooldown** after losses (vs 60 swing)
-- **15 M1 bars** pullback lookback (vs 10 M15 bars)
+- Triggers on **M5 bar close**
+- Entry via **M15 TK cross** (vs M15 pullback re-alignment)
+- **No M1 involvement** — eliminates low-timeframe noise
+- **60-minute cooldown** after losses
 - **30-minute continuation window** (vs 120)
 - **Grace zone** prevents spread-triggered instant exits
 - **Hard stop** at 1.5× ATR caps max loss per trade
@@ -117,7 +127,7 @@ Same pullback breakout logic shifted to lower timeframes for intraday scalping.
 | :--- | :--- | :--- |
 | `MinADX` | 25.0 | Minimum H1 ADX for trend confirmation |
 | `MinCloudPts` | 0 | Minimum H1 cloud thickness in points (0=disabled) |
-| `PullbackBars` | 15 | M1 bars to look back for lost alignment |
+| `TKCrossBars` | 3 | M15 bars to look back for tenkan-kijun cross |
 | `MaxKijunATR` | 1.5 | Max distance from M15 Kijun in ATR multiples |
 | `CooldownMins` | 60 | Minutes to wait after losing exit |
 | `MaxSpreadATR` | 0.3 | Max spread as fraction of M15 ATR (0=disabled) |
