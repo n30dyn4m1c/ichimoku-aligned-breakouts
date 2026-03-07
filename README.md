@@ -53,7 +53,7 @@ After a Kijun break exit, the move often resumes in the same direction. If the s
 
 - **Cooldown**: 60 minutes after a losing exit before re-entry (overridden by continuation)
 - **Continuation window**: 120 minutes to re-enter same direction after exit (swing), 30 minutes (scalp)
-- **Max positions**: 8 simultaneous (configurable)
+- **Max positions**: 8 simultaneous for swing, 3 for scalp (configurable)
 - **Spread filter**: Skips entry during wide spreads
 
 ### Parameters
@@ -83,17 +83,48 @@ Same pullback breakout logic shifted to lower timeframes for intraday scalping.
 | Intermediate | H4 full alignment | M15 full alignment |
 | Entry trigger | M15 pullback re-alignment | M1 pullback re-alignment |
 | Hard exit | H4 reversal | M15 reversal |
-| Exit (losing) | M5 Kijun | M1 Kijun |
-| Exit (small profit) | M15 Kijun | M5 Kijun |
-| Exit (large profit) | H1 Kijun | M15 Kijun |
+| Hard stop | — | 1.5× M15 ATR max loss |
+| Exit (deep loss) | M5 Kijun | M1 Kijun (< -0.5 ATR) |
+| Grace zone | — | No trailing exit (-0.5 to +0.3 ATR) |
+| Exit (small profit) | M15 Kijun | M5 Kijun (0.3–1.0 ATR) |
+| Exit (large profit) | H1 Kijun | M15 Kijun (> 1.0 ATR) |
 | ATR reference | H4 | M15 |
+
+### 5-Tier Exit System
+
+| Profit (ATR) | Exit Trigger | Purpose |
+| :--- | :--- | :--- |
+| ≤ -1.5 | Immediate close | Hard stop — cap max loss |
+| -1.5 to -0.5 | M1 Kijun break | Cut deep losses |
+| -0.5 to +0.3 | None (grace zone) | Let trade survive initial noise/spread |
+| +0.3 to +1.0 | M5 Kijun break | Protect small gains |
+| > +1.0 | M15 Kijun break | Let profits run |
+| M15 reversal | Immediate close | Structural safety net (any profit level) |
 
 ### Key Differences from Swing
 
 - Triggers on **M1 bar close** (vs M5)
-- **15-minute cooldown** after losses (vs 60)
+- **60-minute cooldown** after losses (vs 60 swing)
 - **15 M1 bars** pullback lookback (vs 10 M15 bars)
 - **30-minute continuation window** (vs 120)
+- **Grace zone** prevents spread-triggered instant exits
+- **Hard stop** at 1.5× ATR caps max loss per trade
+- **Daily loss limit** — 3 losses per symbol per day before pausing
+
+### Parameters
+
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| `MinADX` | 25.0 | Minimum H1 ADX for trend confirmation |
+| `MinCloudPts` | 0 | Minimum H1 cloud thickness in points (0=disabled) |
+| `PullbackBars` | 15 | M1 bars to look back for lost alignment |
+| `MaxKijunATR` | 1.5 | Max distance from M15 Kijun in ATR multiples |
+| `CooldownMins` | 60 | Minutes to wait after losing exit |
+| `MaxSpreadATR` | 0.3 | Max spread as fraction of M15 ATR (0=disabled) |
+| `MaxPositions` | 3 | Max simultaneous positions (0=unlimited) |
+| `ReentryMins` | 30 | Minutes after exit to allow continuation re-entry (0=disabled) |
+| `MaxLossATR` | 1.5 | Hard stop loss in ATR multiples (0=disabled) |
+| `MaxDailyLosses` | 3 | Max losses per symbol per day before pausing (0=unlimited) |
 
 ---
 
