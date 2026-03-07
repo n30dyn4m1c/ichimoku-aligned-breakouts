@@ -19,6 +19,7 @@ A collection of MQL5 indicators and Expert Advisors that use Ichimoku Kinko Hyo 
 | `pullback-breakout-ea-gold.mq5` | EA | Gold-only pullback breakout EA |
 | `pullback-scalp-ea.mq5` | EA | **Pullback scalp**: H1+M15 trend, M1 pullback re-alignment entry |
 | `pullback-scalp-ea-gold.mq5` | EA | Gold-only pullback scalp EA |
+| `pullback-scalp-ea-crypto.mq5` | EA | Crypto-only pullback scalp EA (24/7 weekend trading) |
 
 ---
 
