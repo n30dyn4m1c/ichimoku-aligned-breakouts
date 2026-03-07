@@ -22,10 +22,12 @@ input int    MinCloudPts  = 0;        // Minimum H1 cloud thickness in points (0
 input int    PullbackBars = 15;       // How many M1 bars back to check for lost alignment
 input double MaxKijunATR  = 1.5;      // Max distance from M15 Kijun in ATR multiples
 input int    ATRPeriod    = 14;       // ATR period for overextension check
-input int    CooldownMins = 15;       // Minutes to wait after a losing exit before re-entry
+input int    CooldownMins = 60;       // Minutes to wait after a losing exit before re-entry
 input double MaxSpreadATR = 0.3;      // Max spread as fraction of M15 ATR (0=disabled)
-input int    MaxPositions = 5;        // Max simultaneous positions (0=unlimited)
+input int    MaxPositions = 3;        // Max simultaneous positions (0=unlimited)
 input int    ReentryMins  = 30;       // Minutes after exit to allow continuation re-entry (0=disabled)
+input double MaxLossATR    = 1.5;     // Hard stop loss in ATR multiples (0=disabled)
+input int    MaxDailyLosses = 3;      // Max losses per symbol per day before pausing (0=unlimited)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 20
@@ -47,6 +49,10 @@ datetime cooldownUntil[MAX_SYMS];
 int      lastExitDir[MAX_SYMS];
 datetime lastExitTime[MAX_SYMS];
 int      activeCount = 0;
+
+// Daily loss tracking
+int      consecLosses[MAX_SYMS];
+int      lossDay[MAX_SYMS];
 
 CTrade   trade;
 
@@ -82,6 +88,8 @@ int OnInit()
       cooldownUntil[s] = 0;
       lastExitDir[s]   = 0;
       lastExitTime[s]  = 0;
+      consecLosses[s]  = 0;
+      lossDay[s]       = -1;
 
       ichH1[s]  = iIchimoku(syms[s], PERIOD_H1,  Tenkan, Kijun, SenkouB);
       ichM15[s] = iIchimoku(syms[s], PERIOD_M15, Tenkan, Kijun, SenkouB);
@@ -168,6 +176,13 @@ string PCTime()
    if(h == 0) h = 12;
    else if(h > 12) h -= 12;
    return IntegerToString(h) + ":" + StringFormat("%02d", dt.min) + " " + ampm;
+}
+
+int TodayID()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   return dt.year * 400 + dt.day_of_year;
 }
 
 //==============================================================
@@ -502,20 +517,33 @@ void OnTick()
             exitReason = "M15 reversal - hard exit";
          }
 
+         // 5-tier trailing Kijun exit based on profit size
          if(!shouldExit)
          {
             double profitATR = ProfitInATR(syms[s], s, activeState[s], entryPrice[s]);
 
-            if(profitATR < 0)
+            if(MaxLossATR > 0 && profitATR <= -MaxLossATR)
             {
+               // Hard stop — max loss reached
+               shouldExit = true;
+               exitReason = "Hard stop - max loss";
+            }
+            else if(profitATR < -0.5)
+            {
+               // Deep loss — M1 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M1, ichM1[s], activeState[s]))
                {
                   shouldExit = true;
                   exitReason = "M1 Kijun break - loss cut";
                }
             }
+            else if(profitATR < 0.3)
+            {
+               // Grace zone — no trailing exit, let the trade breathe
+            }
             else if(profitATR < 1.0)
             {
+               // Small profit — M5 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M5, ichM5[s], activeState[s]))
                {
                   shouldExit = true;
@@ -524,6 +552,7 @@ void OnTick()
             }
             else
             {
+               // Large profit — M15 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M15, ichM15[s], activeState[s]))
                {
                   shouldExit = true;
@@ -549,7 +578,14 @@ void OnTick()
             if(activeCount > 0) activeCount--;
 
             if(wasLoss)
+            {
                cooldownUntil[s] = TimeCurrent() + CooldownMins * 60;
+               int today = TodayID();
+               if(lossDay[s] != today) { consecLosses[s] = 1; lossDay[s] = today; }
+               else consecLosses[s]++;
+            }
+            else
+               consecLosses[s] = 0;
          }
       }
 
@@ -557,6 +593,9 @@ void OnTick()
       if(activeState[s] != 0) continue;
 
       if(MaxPositions > 0 && activeCount >= MaxPositions) continue;
+
+      // Daily loss limit
+      if(MaxDailyLosses > 0 && lossDay[s] == TodayID() && consecLosses[s] >= MaxDailyLosses) continue;
 
       bool isContinuation = false;
       if(ReentryMins > 0 && lastExitDir[s] != 0 && lastExitTime[s] > 0)
