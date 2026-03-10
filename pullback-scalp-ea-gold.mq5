@@ -28,6 +28,7 @@ input int    MaxPositions = 3;        // Max simultaneous positions (0=unlimited
 input int    ReentryMins  = 30;       // Minutes after exit to allow continuation re-entry (0=disabled)
 input double MaxLossATR    = 1.5;     // Hard stop loss in ATR multiples (0=disabled)
 input int    MaxDailyLosses = 3;      // Max losses per symbol per day before pausing (0=unlimited)
+input bool   ManualExitMode = false;  // Manual exit mode: keep only protective exits (hard stop, M15 reversal)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 10
@@ -467,7 +468,7 @@ void OnTick()
                shouldExit = true;
                exitReason = "Hard stop - max loss";
             }
-            else if(profitATR < -0.5)
+            else if(!ManualExitMode && profitATR < -0.5)
             {
                // Deep loss — M5 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M5, ichM5[s], activeState[s]))
@@ -476,11 +477,11 @@ void OnTick()
                   exitReason = "M5 Kijun break - loss cut";
                }
             }
-            else if(profitATR < 0.3)
+            else if(!ManualExitMode && profitATR < 0.3)
             {
                // Grace zone — no trailing exit, let the trade breathe
             }
-            else if(profitATR < 1.0)
+            else if(!ManualExitMode && profitATR < 1.0)
             {
                // Small profit — M15 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M15, ichM15[s], activeState[s]))
@@ -489,7 +490,7 @@ void OnTick()
                   exitReason = "M15 Kijun break - small profit taken";
                }
             }
-            else
+            else if(!ManualExitMode)
             {
                // Large profit — H1 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_H1, ichH1[s], activeState[s]))
