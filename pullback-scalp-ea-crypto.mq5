@@ -1,8 +1,8 @@
 //+------------------------------------------------------------------+
 //| Pullback Scalp EA — Crypto (24/7 weekend trading)                |
-//| Entry: H1 trend + M15 alignment + M1 pullback re-alignment      |
+//| Entry: H1 trend + M15 alignment + M15 TK cross                  |
 //| Overextension guard: ATR distance from M15 Kijun                 |
-//| Exit: 3-tier Kijun (M1/M5/M15) + M15 reversal hard exit         |
+//| Exit: 5-tier Kijun (M5/M15/H1) + M15 reversal hard exit         |
 //| Author: Neo Malesa                                                |
 //+------------------------------------------------------------------+
 #property strict
@@ -19,7 +19,7 @@ input int    Slippage     = 30;
 input double MinADX       = 25.0;     // Minimum H1 ADX to confirm trend
 input int    ADXPeriod    = 14;       // ADX period
 input int    MinCloudPts  = 0;        // Minimum H1 cloud thickness in points (0=disabled)
-input int    PullbackBars = 15;       // How many M1 bars back to check for lost alignment
+input int    TKCrossBars = 3;         // M15 bars to look back for tenkan-kijun cross
 input double MaxKijunATR  = 1.5;      // Max distance from M15 Kijun in ATR multiples
 input int    ATRPeriod    = 14;       // ATR period for overextension check
 input int    CooldownMins = 60;       // Minutes to wait after a losing exit before re-entry
@@ -28,19 +28,19 @@ input int    MaxPositions = 3;        // Max simultaneous positions (0=unlimited
 input int    ReentryMins  = 30;       // Minutes after exit to allow continuation re-entry (0=disabled)
 input double MaxLossATR    = 1.5;     // Hard stop loss in ATR multiples (0=disabled)
 input int    MaxDailyLosses = 3;      // Max losses per symbol per day before pausing (0=unlimited)
+input bool   ManualExitMode = false;  // Manual exit mode: keep only protective exits (hard stop, M15 reversal)
 
 //--- Constants and Global Variables ---
 #define MAX_SYMS 20
 
-int      ichH1[MAX_SYMS];
-int      ichM15[MAX_SYMS];
-int      ichM5[MAX_SYMS];
-int      ichM1[MAX_SYMS];
+int      ichH1[MAX_SYMS];      // Trend filter + large profit exit
+int      ichM15[MAX_SYMS];     // Intermediate alignment + TK cross + small profit exit
+int      ichM5[MAX_SYMS];      // Loss cut exit
 int      adxH1[MAX_SYMS];
 int      atrM15[MAX_SYMS];
 string   syms[MAX_SYMS];
 int      symsCount = 0;
-datetime lastM1bar = 0;
+datetime lastM5bar = 0;
 int      MAGIC = 20260324;
 
 int      activeState[MAX_SYMS];
@@ -94,10 +94,9 @@ int OnInit()
       ichH1[s]  = iIchimoku(syms[s], PERIOD_H1,  Tenkan, Kijun, SenkouB);
       ichM15[s] = iIchimoku(syms[s], PERIOD_M15, Tenkan, Kijun, SenkouB);
       ichM5[s]  = iIchimoku(syms[s], PERIOD_M5,  Tenkan, Kijun, SenkouB);
-      ichM1[s]  = iIchimoku(syms[s], PERIOD_M1,  Tenkan, Kijun, SenkouB);
 
       if(ichH1[s] == INVALID_HANDLE || ichM15[s] == INVALID_HANDLE ||
-         ichM5[s] == INVALID_HANDLE || ichM1[s] == INVALID_HANDLE)
+         ichM5[s] == INVALID_HANDLE)
          return(INIT_FAILED);
 
       adxH1[s] = iADX(syms[s], PERIOD_H1, ADXPeriod);
@@ -122,7 +121,6 @@ void OnDeinit(const int reason)
       IndicatorRelease(ichH1[s]);
       IndicatorRelease(ichM15[s]);
       IndicatorRelease(ichM5[s]);
-      IndicatorRelease(ichM1[s]);
       IndicatorRelease(adxH1[s]);
       IndicatorRelease(atrM15[s]);
    }
@@ -280,92 +278,32 @@ bool H1IsTrending(string sym, int s)
 }
 
 //==============================================================
-// M1 Pullback Detection
+// M15 Tenkan-Kijun Cross Detection
 //==============================================================
 
-bool M1HadPullback(string sym, int h, int dir)
+bool M15TKCross(string sym, int h, int dir)
 {
-   MqlRates rt[];
-   if(CopyRates(sym, PERIOD_M1, 0, 120, rt) <= 0) return false;
-   ArraySetAsSeries(rt, true);
-
-   int startBar = 2;
-   int endBar   = PullbackBars + 1;
-   int count    = endBar - startBar + 1;
-
-   int pcStart  = startBar + 26;    // price-cloud shift range start
-   int pcCount  = count;
-   int chStart  = startBar + 26;    // chikou shift range start
-   int chCount  = count;
-   int ccStart  = startBar + 52;    // chikou-cloud shift range start
-   int ccCount  = count;
-
-   if(ArraySize(rt) <= (int)(endBar + 52)) return false;
-
-   // Batch copy: price-bar buffers (tenkan/kijun at bar)
-   // ArraySetAsSeries so index 0 = lowest shift (startBar), matching idx = bar - startBar
+   int count = TKCrossBars + 1;
    double ten[], kij[];
-   if(CopyBuffer(h, 0, startBar, count, ten) < count) return false;
-   if(CopyBuffer(h, 1, startBar, count, kij) < count) return false;
+   if(CopyBuffer(h, 0, 1, count, ten) < count) return false;
+   if(CopyBuffer(h, 1, 1, count, kij) < count) return false;
    ArraySetAsSeries(ten, true);
    ArraySetAsSeries(kij, true);
 
-   // Batch copy: cloud at price (senkou A/B shifted +26)
-   double senA[], senB[];
-   if(CopyBuffer(h, 2, pcStart, pcCount, senA) < pcCount) return false;
-   if(CopyBuffer(h, 3, pcStart, pcCount, senB) < pcCount) return false;
-   ArraySetAsSeries(senA, true);
-   ArraySetAsSeries(senB, true);
-
-   // Batch copy: chikou span at chikou shift (+26)
-   double chik[];
-   if(CopyBuffer(h, 4, chStart, chCount, chik) < chCount) return false;
-   ArraySetAsSeries(chik, true);
-
-   // Batch copy: tenkan/kijun at chikou shift (+26)
-   double ten_ch[], kij_ch[];
-   if(CopyBuffer(h, 0, chStart, chCount, ten_ch) < chCount) return false;
-   if(CopyBuffer(h, 1, chStart, chCount, kij_ch) < chCount) return false;
-   ArraySetAsSeries(ten_ch, true);
-   ArraySetAsSeries(kij_ch, true);
-
-   // Batch copy: cloud at chikou-cloud shift (+52)
-   double senA_ch[], senB_ch[];
-   if(CopyBuffer(h, 2, ccStart, ccCount, senA_ch) < ccCount) return false;
-   if(CopyBuffer(h, 3, ccStart, ccCount, senB_ch) < ccCount) return false;
-   ArraySetAsSeries(senA_ch, true);
-   ArraySetAsSeries(senB_ch, true);
-
-   for(int bar = startBar; bar <= endBar; bar++)
+   // Look for a cross within the last TKCrossBars M15 bars
+   for(int i = 0; i < TKCrossBars; i++)
    {
-      int idx = bar - startBar;
-
-      double closeP   = rt[bar].close;
-      double price_26 = rt[bar + 26].close;
-
-      double cHi  = MathMax(senA[idx], senB[idx]);
-      double cLo  = MathMin(senA[idx], senB[idx]);
-      double cHiC = MathMax(senA_ch[idx], senB_ch[idx]);
-      double cLoC = MathMin(senA_ch[idx], senB_ch[idx]);
-
-      bool aligned = false;
-
       if(dir == 1)
       {
-         bool priceAbove = (closeP > cHi && closeP > ten[idx] && closeP > kij[idx]);
-         bool chAbove = (chik[idx] > cHiC && chik[idx] > ten_ch[idx] && chik[idx] > kij_ch[idx] && chik[idx] > price_26);
-         aligned = (priceAbove && chAbove);
+         // Bullish: tenkan crosses above kijun
+         if(ten[i] > kij[i] && ten[i+1] <= kij[i+1]) return true;
       }
       else
       {
-         bool priceBelow = (closeP < cLo && closeP < ten[idx] && closeP < kij[idx]);
-         bool chBelow = (chik[idx] < cLoC && chik[idx] < ten_ch[idx] && chik[idx] < kij_ch[idx] && chik[idx] < price_26);
-         aligned = (priceBelow && chBelow);
+         // Bearish: tenkan crosses below kijun
+         if(ten[i] < kij[i] && ten[i+1] >= kij[i+1]) return true;
       }
-
-      if(!aligned) return true;
    }
-
    return false;
 }
 
@@ -496,11 +434,12 @@ void ClosePosition(string sym)
 
 void OnTick()
 {
-   MqlRates m1[];
-   if(CopyRates(syms[0], PERIOD_M1, 0, 2, m1) <= 0) return;
-   ArraySetAsSeries(m1, true);
-   if(m1[1].time == lastM1bar) return;
-   lastM1bar = m1[1].time;
+   // Trigger on M5 bar close
+   MqlRates m5[];
+   if(CopyRates(syms[0], PERIOD_M5, 0, 2, m5) <= 0) return;
+   ArraySetAsSeries(m5, true);
+   if(m5[1].time == lastM5bar) return;
+   lastM5bar = m5[1].time;
 
    for(int s = 0; s < symsCount; s++)
    {
@@ -528,35 +467,35 @@ void OnTick()
                shouldExit = true;
                exitReason = "Hard stop - max loss";
             }
-            else if(profitATR < -0.5)
+            else if(!ManualExitMode && profitATR < -0.5)
             {
-               // Deep loss — M1 Kijun trailing
-               if(KijunBreak(syms[s], PERIOD_M1, ichM1[s], activeState[s]))
-               {
-                  shouldExit = true;
-                  exitReason = "M1 Kijun break - loss cut";
-               }
-            }
-            else if(profitATR < 0.3)
-            {
-               // Grace zone — no trailing exit, let the trade breathe
-            }
-            else if(profitATR < 1.0)
-            {
-               // Small profit — M5 Kijun trailing
+               // Deep loss — M5 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M5, ichM5[s], activeState[s]))
                {
                   shouldExit = true;
-                  exitReason = "M5 Kijun break - small profit taken";
+                  exitReason = "M5 Kijun break - loss cut";
                }
             }
-            else
+            else if(!ManualExitMode && profitATR < 0.3)
             {
-               // Large profit — M15 Kijun trailing
+               // Grace zone — no trailing exit, let the trade breathe
+            }
+            else if(!ManualExitMode && profitATR < 1.0)
+            {
+               // Small profit — M15 Kijun trailing
                if(KijunBreak(syms[s], PERIOD_M15, ichM15[s], activeState[s]))
                {
                   shouldExit = true;
-                  exitReason = "M15 Kijun break - profit taken";
+                  exitReason = "M15 Kijun break - small profit taken";
+               }
+            }
+            else if(!ManualExitMode)
+            {
+               // Large profit — H1 Kijun trailing
+               if(KijunBreak(syms[s], PERIOD_H1, ichH1[s], activeState[s]))
+               {
+                  shouldExit = true;
+                  exitReason = "H1 Kijun break - profit taken";
                }
             }
          }
@@ -625,12 +564,10 @@ void OnTick()
       int m15St = FullAlignment(syms[s], PERIOD_M15, ichM15[s]);
       if(m15St == 0 || m15St != h1Bias) continue;
 
-      int m1St = FullAlignment(syms[s], PERIOD_M1, ichM1[s]);
-      if(m1St == 0 || m1St != h1Bias) continue;
-
+      // M15 TK cross — waived for continuation re-entry
       if(!isContinuation)
       {
-         if(!M1HadPullback(syms[s], ichM1[s], h1Bias)) continue;
+         if(!M15TKCross(syms[s], ichM15[s], h1Bias)) continue;
       }
 
       if(IsOverextended(syms[s], s, h1Bias)) continue;
